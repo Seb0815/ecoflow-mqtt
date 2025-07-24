@@ -1,2 +1,3 @@
+git+https://github.com/tolwi/hassio-ecoflow-cloud.git
 paho-mqtt
 requests
