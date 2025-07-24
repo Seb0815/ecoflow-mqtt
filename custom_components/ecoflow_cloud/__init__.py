@@ -1,9 +1,9 @@
 import logging
 from typing import Final
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+#from homeassistant.config_entries import ConfigEntry
+#from homeassistant.const import Platform
+#from homeassistant.core import HomeAssistant
 
 from . import _preload_proto  # noqa: F401 # pyright: ignore[reportUnusedImport]
 from .device_data import DeviceData, DeviceOptions
