@@ -2,11 +2,25 @@ import logging
 from collections.abc import Sequence
 from typing import Any, cast, override
 
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.components.switch import SwitchEntity
-from homeassistant.components.number import NumberEntity
-from homeassistant.components.select import SelectEntity
-from homeassistant.util import dt
+# Dummy Home Assistant imports für Standalone MQTT Publisher
+class SensorEntity:
+    pass
+
+class SwitchEntity:
+    pass
+
+class NumberEntity:
+    pass
+
+class SelectEntity:
+    pass
+
+# Dummy dt module
+class dt:
+    @staticmethod
+    def utcnow():
+        import datetime
+        return datetime.datetime.now(datetime.timezone.utc)
 
 from custom_components.ecoflow_cloud.devices import const
 from custom_components.ecoflow_cloud.select import PowerDictSelectEntity

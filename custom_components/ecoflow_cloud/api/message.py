@@ -1,7 +1,19 @@
 import json
 import random
+import sys
 from abc import ABC, abstractmethod
-from typing import override
+from typing import Union, Dict, List
+
+# Python 3.12+ compatibility
+if sys.version_info >= (3, 12):
+    # Python 3.11 compatibility - override decorator nicht verfügbar
+    def override(func):
+        """Python 3.11 compatible override decorator"""
+        return func
+else:
+    # Fallback for Python < 3.12
+    def override(func):
+        return func
 
 from paho.mqtt.client import PayloadType
 
@@ -12,8 +24,8 @@ class Message(ABC):
         raise NotImplementedError()
 
 
-JSONType = None | bool | int | float | str | list["JSONType"] | dict[str, "JSONType"]
-JSONDict = dict[str, JSONType]
+JSONType = Union[None, bool, int, float, str, List["JSONType"], Dict[str, "JSONType"]]
+JSONDict = Dict[str, JSONType]
 
 
 class JSONMessage(Message):

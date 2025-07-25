@@ -3,6 +3,7 @@ import hmac
 import logging
 import random
 import time
+from typing import Optional
 
 import aiohttp
 
@@ -47,14 +48,18 @@ class EcoflowPublicApiClient(EcoflowApiClient):
             sn = device["sn"]
             product_name = device.get("productName", "undefined")
             if product_name == "undefined":
-                from ..devices.registry import device_by_product
+                try:
+                    from ..devices.registry import device_by_product
 
-                device_list = list(device_by_product.keys())
-                for devicetype in device_list:
-                    if "deviceName" in device and device[
-                        "deviceName"
-                    ].lower().startswith(devicetype.lower()):
-                        product_name = devicetype
+                    device_list = list(device_by_product.keys())
+                    for devicetype in device_list:
+                        if "deviceName" in device and device[
+                            "deviceName"
+                        ].lower().startswith(devicetype.lower()):
+                            product_name = devicetype
+                except ImportError:
+                    # Fallback wenn Registry nicht verfügbar
+                    pass
             device_name = device.get("deviceName", f"{product_name}-{sn}")
             status = int(device["online"])
             result.append(
@@ -73,24 +78,32 @@ class EcoflowPublicApiClient(EcoflowApiClient):
                 device_data.sn, device_data.name, device_data.device_type
             )
 
-        from custom_components.ecoflow_cloud.devices.registry import device_by_product
+        try:
+            from custom_components.ecoflow_cloud.devices.registry import device_by_product
 
-        if device_data.device_type in device_by_product:
-            device = device_by_product[device_data.device_type](info, device_data)
-        elif (
-            device_data.parent is not None
-            and device_data.parent.device_type in device_by_product
-        ):
-            device = device_by_product[device_data.parent.device_type](
-                info, device_data
-            )
-        else:
+            if device_data.device_type in device_by_product:
+                device = device_by_product[device_data.device_type](info, device_data)
+            elif (
+                device_data.parent is not None
+                and device_data.parent.device_type in device_by_product
+            ):
+                device = device_by_product[device_data.parent.device_type](
+                    info, device_data
+                )
+            else:
+                device = DiagnosticDevice(info, device_data)
+        except ImportError:
+            # Fallback wenn Registry nicht verfügbar ist
+            _LOGGER.warning(f"Device registry nicht verfügbar, verwende DiagnosticDevice für {device_data.device_type}")
             device = DiagnosticDevice(info, device_data)
 
         self.add_device(device)
         return device
 
-    async def quota_all(self, device_sn: str | None):
+        self.add_device(device)
+        return device
+
+    async def quota_all(self, device_sn: Optional[str]):
         if not device_sn:
             target_devices = self.devices.keys()
             # update all statuses
@@ -160,7 +173,7 @@ class EcoflowPublicApiClient(EcoflowApiClient):
             status_topic=f"/open/{self.mqtt_info.username}/{device_sn}/status",
         )
 
-    def __gen_sign(self, query_params: str | None) -> str:
+    def __gen_sign(self, query_params: Optional[str]) -> str:
         target_str = (
             f"accessKey={self.access_key}&nonce={self.nonce}&timestamp={self.timestamp}"
         )

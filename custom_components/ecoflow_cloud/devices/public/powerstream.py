@@ -2,10 +2,18 @@ import logging
 from collections.abc import Sequence
 from typing import Any, override
 
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.components.switch import SwitchEntity
-from homeassistant.components.number import NumberEntity
-from homeassistant.components.select import SelectEntity
+# Dummy Home Assistant imports für Standalone MQTT Publisher
+class SensorEntity:
+    pass
+
+class SwitchEntity:
+    pass
+
+class NumberEntity:
+    pass
+
+class SelectEntity:
+    pass
 
 from ...api import EcoflowApiClient
 from ...number import (

@@ -4,7 +4,10 @@ import time
 from _socket import SocketType
 from typing import Any
 
-from homeassistant.core import callback
+# Dummy callback decorator for standalone operation
+def callback(func):
+    return func
+
 from paho.mqtt.client import MQTTMessage, PayloadType
 
 from ..devices import BaseDevice
@@ -14,23 +17,21 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class EcoflowMQTTClient:
-    def __init__(self, mqtt_info: EcoflowMqttInfo, devices: dict[str, BaseDevice]):
+    def __init__(self, mqtt_info: EcoflowMqttInfo, devices: dict[str, BaseDevice], device_sns: list = None):
         from ..devices import BaseDevice
+        import paho.mqtt.client as mqtt
 
         self.connected = False
         self.__mqtt_info = mqtt_info
         self.__devices: dict[str, BaseDevice] = devices
+        self.__device_sns = device_sns or list(devices.keys())
 
-        from homeassistant.components.mqtt.async_client import AsyncMQTTClient
-
-        self.__client: AsyncMQTTClient = AsyncMQTTClient(
+        # Use standard paho-mqtt client instead of HA's AsyncMQTTClient
+        self.__client = mqtt.Client(
             client_id=self.__mqtt_info.client_id,
-            reconnect_on_failure=True,
             clean_session=True,
         )
 
-        # self.__client._connect_timeout = 15.0
-        self.__client.setup()
         self.__client.username_pw_set(
             self.__mqtt_info.username, self.__mqtt_info.password
         )
@@ -49,6 +50,10 @@ class EcoflowMQTTClient:
 
     def is_connected(self):
         return self.__client.is_connected()
+
+    def start(self):
+        """Start the MQTT client"""
+        self.__client.loop_start()
 
     def reconnect(self) -> bool:
         try:
@@ -72,8 +77,34 @@ class EcoflowMQTTClient:
         if rc == 0:
             self.connected = True
             target_topics = [(topic, 1) for topic in self.__target_topics()]
-            self.__client.subscribe(target_topics)
-            _LOGGER.info(f"Subscribed to MQTT topics {target_topics}")
+            
+            # Prüfe ob Topics vorhanden sind
+            if target_topics:
+                self.__client.subscribe(target_topics)
+                _LOGGER.info(f"Subscribed to MQTT topics {target_topics}")
+            else:
+                # Fallback: Subscribe zu allen Device-Topics direkt basierend auf Seriennummern
+                device_topics = []
+                for device_sn in self.__device_sns:
+                    # Standard EcoFlow Topic Patterns - erweitert für bessere Abdeckung
+                    patterns = [
+                        f"/app/device/property/{device_sn}",
+                        f"/app/{device_sn}/+",
+                        f"/app/+/{device_sn}/+",
+                        f"/app/device/quota/{device_sn}",
+                        f"/{device_sn}/+",
+                        f"+/{device_sn}/+/+",
+                        f"/topic/device/{device_sn}/+/+",
+                        f"/topic/{device_sn}/+/+"
+                    ]
+                    device_topics.extend([(topic, 1) for topic in patterns])
+                
+                if device_topics:
+                    self.__client.subscribe(device_topics)
+                    _LOGGER.info(f"Subscribed to {len(device_topics)} fallback device topics for {len(self.__device_sns)} devices")
+                    _LOGGER.debug(f"Topics: {[topic[0] for topic in device_topics[:10]]}...")  # Zeige nur erste 10
+                else:
+                    _LOGGER.warning("Keine Topics zum Abonnieren gefunden")
         else:
             self.__log_with_reason("connect", client, userdata, rc)
 
@@ -138,7 +169,35 @@ class EcoflowMQTTClient:
     def __target_topics(self) -> list[str]:
         topics = []
         for device in self.__devices.values():
-            for topic in device.device_info.topics():
-                topics.append(topic)
-        # Remove duplicates that can occur when multiple devices have the same topic (for example sub devices)
-        return list(set(topics))
+            try:
+                if hasattr(device, 'device_info') and hasattr(device.device_info, 'topics'):
+                    for topic in device.device_info.topics():
+                        topics.append(topic)
+                elif hasattr(device, 'device_data'):
+                    # Fallback: Generiere Standard-Topics für Device
+                    device_sn = device.device_data.sn
+                    standard_topics = [
+                        f"/app/device/property/{device_sn}",
+                        f"/app/{device_sn}/+",
+                        f"/app/+/{device_sn}/+"
+                    ]
+                    topics.extend(standard_topics)
+            except Exception as e:
+                _LOGGER.debug(f"Fehler beim Ermitteln der Topics für Device: {e}")
+        
+        # Fallback: Wenn immer noch keine Topics, verwende allgemeine Patterns für alle Seriennummern
+        if not topics:
+            for device_sn in self.__device_sns:
+                topics.extend([
+                    f"/app/device/property/{device_sn}",
+                    f"/app/{device_sn}/+",
+                    f"/app/+/{device_sn}/+",
+                    f"/app/device/quota/{device_sn}",
+                    f"/{device_sn}/+",
+                    f"+/{device_sn}/+/+",
+                    f"/topic/device/{device_sn}/+/+",
+                    f"/topic/{device_sn}/+/+"
+                ])
+        
+        # Remove duplicates that can occur when multiple devices have the same topic
+        return list(set(topics)) if topics else []

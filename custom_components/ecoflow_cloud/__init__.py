@@ -1,7 +1,14 @@
 import logging
-from typing import Final
+from typing import Final, Dict
 
-from . import _preload_proto  # noqa: F401 # pyright: ignore[reportUnusedImport]
+# Standalone Proto Preloader verwenden (falls verfügbar)
+# Proto-Import für Container deaktiviert um Python-Kompatibilitätsprobleme zu vermeiden
+# try:
+#     from . import _preload_proto  # noqa: F401 # pyright: ignore[reportUnusedImport]
+# except ImportError:
+#     # Fallback für standalone Version
+#     pass
+
 from .device_data import DeviceData, DeviceOptions
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,9 +52,9 @@ DEFAULT_REFRESH_PERIOD_SEC: Final = 5
 
 
 # Standalone-Funktionen für die MQTT-only Version
-def extract_devices_from_config(devices_config: dict) -> dict[str, DeviceData]:
+def extract_devices_from_config(devices_config: Dict[str, DeviceData]) -> Dict[str, DeviceData]:
     """Extrahiert Geräte-Daten aus der Standalone-Konfiguration"""
-    result = dict[str, DeviceData]()
+    result = {}  # type: Dict[str, DeviceData]
     
     for sn, data in devices_config.items():
         result[sn] = DeviceData(

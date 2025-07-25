@@ -1,30 +1,31 @@
 version: '3'
 services:
-  build: 
-      context: .
-      dockerfile: Dockerfile
-  container_name: ecoflow-mqtt-publisher
-  restart: unless-stopped
-  environment:
-    # EcoFlow API Konfiguration
-    ECOFLOW_AUTH_TYPE: "${ECOFLOW_AUTH_TYPE:-private}"
-    ECOFLOW_USERNAME: "${ECOFLOW_USERNAME}"
-    ECOFLOW_PASSWORD: "${ECOFLOW_PASSWORD}"
-    ECOFLOW_ACCESS_KEY: "${ECOFLOW_ACCESS_KEY}"
-    ECOFLOW_SECRET_KEY: "${ECOFLOW_SECRET_KEY}"
-    ECOFLOW_API_HOST: "${ECOFLOW_API_HOST:-api.ecoflow.com}"
-    ECOFLOW_GROUP: "${ECOFLOW_GROUP:-default}"
-    ECOFLOW_DEVICES: "${ECOFLOW_DEVICES}"
-    
-    # MQTT Konfiguration  
-    MQTT_HOST: "${MQTT_HOST:-mqtt}"
-    MQTT_PORT: "${MQTT_PORT:-1883}"
-    MQTT_USERNAME: "${MQTT_USERNAME}"
-    MQTT_PASSWORD: "${MQTT_PASSWORD}"
-    MQTT_BASE_TOPIC: "${MQTT_BASE_TOPIC:-ecoflow}"
-    
-    # Abfrage-Intervall
-    REFRESH_INTERVAL: "${REFRESH_INTERVAL:-30}" 
+  ecoflow-mqtt:
+    build: 
+        context: .
+        dockerfile: Dockerfile
+    container_name: ecoflow-mqtt-publisher
+    restart: unless-stopped
+    environment:
+      # EcoFlow API Konfiguration
+      ECOFLOW_AUTH_TYPE: "${ECOFLOW_AUTH_TYPE:-private}"
+      ECOFLOW_USERNAME: "${ECOFLOW_USERNAME}"
+      ECOFLOW_PASSWORD: "${ECOFLOW_PASSWORD}"
+      ECOFLOW_ACCESS_KEY: "${ECOFLOW_ACCESS_KEY}"
+      ECOFLOW_SECRET_KEY: "${ECOFLOW_SECRET_KEY}"
+      ECOFLOW_API_HOST: "${ECOFLOW_API_HOST:-api.ecoflow.com}"
+      ECOFLOW_GROUP: "${ECOFLOW_GROUP:-default}"
+      ECOFLOW_DEVICES: "${ECOFLOW_DEVICES}"
+      
+      # MQTT Konfiguration  
+      MQTT_HOST: "${MQTT_HOST:-mqtt}"
+      MQTT_PORT: "${MQTT_PORT:-1883}"
+      MQTT_USERNAME: "${MQTT_USERNAME}"
+      MQTT_PASSWORD: "${MQTT_PASSWORD}"
+      MQTT_BASE_TOPIC: "${MQTT_BASE_TOPIC:-ecoflow}"
+      
+      # Abfrage-Intervall
+      REFRESH_INTERVAL: "${REFRESH_INTERVAL:-30}" 
 
 
 

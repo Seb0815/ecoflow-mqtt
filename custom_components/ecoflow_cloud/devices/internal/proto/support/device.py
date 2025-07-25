@@ -1,8 +1,16 @@
 from typing import Any, cast
 
-from homeassistant.util import dt
+import logging
+from collections.abc import Mapping
 
-from .....api.message import JSONDict, JSONMessage, Message
+# Dummy dt module für Standalone MQTT Publisher
+class dt:
+    @staticmethod
+    def utcnow():
+        import datetime
+        return datetime.datetime.now(datetime.timezone.utc)
+
+from custom_components.ecoflow_cloud.api.message import JSONDict, JSONMessage, Message
 from .const import AddressId, Command
 from .message import ProtoMessage
 

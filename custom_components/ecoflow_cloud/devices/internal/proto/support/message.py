@@ -1,6 +1,10 @@
 import json
 import logging
-from typing import override
+
+# Python 3.11 compatibility - override decorator nicht verfügbar
+def override(func):
+    """Python 3.11 compatible override decorator"""
+    return func
 
 from google.protobuf.message import Message as ProtoMessageRaw
 from paho.mqtt.client import PayloadType

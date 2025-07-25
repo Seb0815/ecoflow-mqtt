@@ -41,12 +41,8 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Konfiguration testen (optional)
-if [ "${1}" == "--test" ]; then
-    echo "🧪 Teste Konfiguration..."
-    python3 test_config.py
-    exit $?
-fi
+# Konfiguration testen (optional) - entfernt
+# Test-Funktionalität ist nicht mehr verfügbar
 
 # Publisher starten
 echo "🎯 Starte EcoFlow Cloud MQTT Publisher..."

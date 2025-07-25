@@ -14,7 +14,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # EcoFlow Cloud Komponenten kopieren
 COPY custom_components/ ./custom_components/
 COPY ecoflow_cloud_mqtt.py .
-COPY standalone_mqtt_client.py .
 
 # Nicht benötigte Home Assistant spezifische Dateien entfernen
 RUN find custom_components/ -name "*.py" -exec grep -l "homeassistant" {} \; | while read file; do \

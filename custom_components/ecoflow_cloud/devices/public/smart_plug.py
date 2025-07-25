@@ -1,7 +1,15 @@
-from homeassistant.components.number import NumberEntity
-from homeassistant.components.select import SelectEntity
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.components.switch import SwitchEntity
+# Dummy Home Assistant imports für Standalone MQTT Publisher
+class NumberEntity:
+    pass
+
+class SelectEntity:
+    pass
+
+class SensorEntity:
+    pass
+
+class SwitchEntity:
+    pass
 
 from ...api import EcoflowApiClient
 from ...number import BrightnessLevelEntity

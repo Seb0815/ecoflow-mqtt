@@ -29,12 +29,18 @@ class CommandFuncAndId(NamedTuple):
     id: int
 
 
+class CommandValue:
+    def __init__(self, func, id_val):
+        self.func = func
+        self.id = id_val
+
+
 class Command(enum.Enum):
-    @enum.property
-    def func(self) -> CommandFunc | int:
+    @property
+    def func(self) -> int:
         return self.value.func
 
-    @enum.property
+    @property
     def id(self) -> int:
         return self.value.id
 

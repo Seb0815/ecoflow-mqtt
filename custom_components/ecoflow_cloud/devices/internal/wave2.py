@@ -1,7 +1,9 @@
-from homeassistant.components.switch import SwitchEntity
+# Dummy Home Assistant imports für Standalone MQTT Publisher
+class SwitchEntity:
+    pass
 
 from custom_components.ecoflow_cloud.api import EcoflowApiClient
-from custom_components.ecoflow_cloud.devices import const, BaseDevice
+from .. import const, BaseDevice
 from custom_components.ecoflow_cloud.entities import BaseSensorEntity, BaseNumberEntity, BaseSelectEntity
 from custom_components.ecoflow_cloud.number import SetTempEntity
 from custom_components.ecoflow_cloud.select import DictSelectEntity

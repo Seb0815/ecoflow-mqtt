@@ -1,11 +1,11 @@
 import base64
 import hashlib
 import logging
+import uuid as standard_uuid
 from time import time
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable, Optional, Union, Dict
 
 import aiohttp
-from homeassistant.util import uuid
 from paho.mqtt.client import PayloadType
 
 from ..device_data import DeviceData
@@ -68,12 +68,12 @@ class EcoflowPrivateApiClient(EcoflowApiClient):
 
             # Should be ANDROID_..str.._user_id !!!
             self.mqtt_info.client_id = (
-                f"ANDROID_{str(uuid.random_uuid_hex()).upper()}_{self.user_id}"
+                f"ANDROID_{str(standard_uuid.uuid4()).upper().replace('-', '')}_{self.user_id}"
             )
 
     # Failed to connect to MQTT: not authorised
     def gen_client_id(self):
-        base = f"ANDROID_{str(uuid.random_uuid_hex()).upper()}_{self.user_id}"
+        base = f"ANDROID_{str(standard_uuid.uuid4()).upper().replace('-', '')}_{self.user_id}"
         millis = int(time() * 1000)
         verify_info = "0000000000000000000000000000000000000000000000000000000000000000"
         pub = verify_info[:32]
@@ -93,7 +93,7 @@ class EcoflowPrivateApiClient(EcoflowApiClient):
     async def fetch_all_available_devices(self):
         return []
 
-    async def quota_all(self, device_sn: str | None):
+    async def quota_all(self, device_sn: Optional[str]):
         if not device_sn:
             target_devices = self.devices.items()
         else:
@@ -112,19 +112,23 @@ class EcoflowPrivateApiClient(EcoflowApiClient):
                 device_data.sn, device_data.name, device_data.device_type
             )
 
-        from ..devices.registry import devices
-
-        if device_data.device_type in devices:
-            device = devices[device_data.device_type](info, device_data)
-        elif device_data.parent.device_type in devices:
-            # this can be problematic if a parent chain is recursive (so a parent has a parent again)
-            # the current data structure alows this, but it is not supported here.
-            device = devices[device_data.parent.device_type](info, device_data)
-        else:
+        try:
+            from ..devices.registry import devices
+            
+            if device_data.device_type in devices:
+                device = devices[device_data.device_type](info, device_data)
+            elif device_data.parent and device_data.parent.device_type in devices:
+                # this can be problematic if a parent chain is recursive (so a parent has a parent again)
+                # the current data structure alows this, but it is not supported here.
+                device = devices[device_data.parent.device_type](info, device_data)
+            else:
+                device = DiagnosticDevice(info, device_data)
+        except ImportError:
+            # Fallback für standalone Version ohne device registry
+            _LOGGER.debug(f"Device registry nicht verfügbar, verwende DiagnosticDevice für {device_data.sn}")
             device = DiagnosticDevice(info, device_data)
 
         self.add_device(device)
-
         return device
 
     def __create_device_info(
@@ -144,8 +148,8 @@ class EcoflowPrivateApiClient(EcoflowApiClient):
         )
 
     async def __call_api(
-        self, endpoint: str, params: dict[str:any] | None = None
-    ) -> dict:
+        self, endpoint: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict:
         async with aiohttp.ClientSession() as session:
             headers = {
                 "lang": "en_US",
@@ -166,7 +170,7 @@ class EcoflowPrivateApiClient(EcoflowApiClient):
             _LOGGER.info(f"Request: {endpoint} {req_params}: got {resp}")
             return await self._get_json_response(resp)
 
-    def send_get_message(self, device_sn: str, command: dict | Message):
+    def send_get_message(self, device_sn: str, command: Union[Dict, Message]):
         if isinstance(command, PrivateAPIMessageProtocol):
             self.mqtt_client.publish(
                 self.devices[device_sn].device_info.get_topic,
@@ -176,7 +180,7 @@ class EcoflowPrivateApiClient(EcoflowApiClient):
             super().send_get_message(device_sn, command)
 
     def send_set_message(
-        self, device_sn: str, mqtt_state: dict[str, Any], command: dict | Message
+        self, device_sn: str, mqtt_state: Dict[str, Any], command: Union[Dict, Message]
     ):
         if isinstance(command, PrivateAPIMessageProtocol):
             self.devices[device_sn].data.update_to_target_state(mqtt_state)
