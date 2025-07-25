@@ -23,9 +23,6 @@ services:
       MQTT_USERNAME: "${MQTT_USERNAME}"
       MQTT_PASSWORD: "${MQTT_PASSWORD}"
       MQTT_BASE_TOPIC: "${MQTT_BASE_TOPIC:-ecoflow}"
-      
-      # Abfrage-Intervall
-      REFRESH_INTERVAL: "${REFRESH_INTERVAL:-30}" 
 
 
 

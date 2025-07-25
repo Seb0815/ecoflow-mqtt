@@ -49,7 +49,6 @@ This project started as a full Home Assistant integration for EcoFlow devices bu
      -e ECOFLOW_DEVICES="YOUR_DEVICE_SN" \
      -e MQTT_HOST="192.168.1.100" \
      -e MQTT_PORT="1883" \
-     -e INTERVAL="60" \
      ecoflow-mqtt
    ```
 
@@ -92,8 +91,6 @@ This project started as a full Home Assistant integration for EcoFlow devices bu
 | `MQTT_USERNAME` | MQTT username (optional) | - | `mqttuser` |
 | `MQTT_PASSWORD` | MQTT password (optional) | - | `mqttpass` |
 | `MQTT_BASE_TOPIC` | MQTT base topic | `ecoflow` | `ecoflow` |
-| `REFRESH_INTERVAL` | Query interval (seconds) | `30` | `60` |
-| `INTERVAL` | Alternative name for refresh interval | `30` | `60` |
 
 ### Device Configuration
 
@@ -117,6 +114,7 @@ ECOFLOW_DEVICES="BK11ZEBB2H3Q0583:DELTA_2:MyDelta,HW52ZDH4SF270677:RIVER_2:MyRiv
 - And many more...
 - tested only with 'STREAM ULTRA'
 
+> **ℹ️ Real-time Data:** This system receives data in real-time via EcoFlow's MQTT broker. No polling intervals are needed - data arrives automatically when the device sends updates!
 
 ## 📊 MQTT Topics
 
@@ -154,17 +152,6 @@ ecoflow/BK11ZEBB2H3Q0583/cmd_func
 ecoflow/BK11ZEBB2H3Q0583/timestamp
 ```
 
-**Parameter Payload Format:**
-```json
-{
-  "value": 116.87,
-  "timestamp": 1753455949.123,
-  "device_type": "STREAM_ULTRA",
-  "parameter": "gridConnectionPower",
-  "unit": "W",
-  "type": "numeric"
-}
-```
 
 **Example Topics:**
 ```
@@ -226,23 +213,7 @@ The system will show these messages during startup:
 
 ### Common Issues & Solutions
 
-**1. "No module named 'homeassistant'" (Expected)**
-- ✅ **Normal behavior**: System switches to fallback mode automatically
-- ✅ **Solution**: No action needed - this is the intended operation
-
-**2. "Connection refused" to MQTT**
-- **Solution**: Check `MQTT_HOST` and `MQTT_PORT`
-- Ensure MQTT broker is accessible from container
-
-**3. "Authentication failed" with EcoFlow API**
-- **Solution**: Verify `ECOFLOW_USERNAME` and `ECOFLOW_PASSWORD`
-- Ensure credentials are correct and account has API access
-
-**4. "Invalid device format" (Resolved)**
-- ✅ **Fixed**: Simple serial numbers now supported
-- **Format**: `ECOFLOW_DEVICES=BK11ZEBB2H3Q0583` (no type/name required)
-
-**5. "DeprecationWarning: Callback API version 1 is deprecated"**
+**1. "DeprecationWarning: Callback API version 1 is deprecated"**
 - ⚠️ **Known issue**: Warning displayed but functionality works correctly
 - **Impact**: None - can be safely ignored
 
