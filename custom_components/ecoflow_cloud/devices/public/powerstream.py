@@ -1,6 +1,14 @@
 import logging
 from collections.abc import Sequence
-from typing import Any, override
+from typing import Any
+
+# Python 3.11 compatibility: override is only available in 3.12+
+try:
+    from typing import override
+except ImportError:
+    # Fallback for Python < 3.12
+    def override(func):
+        return func
 
 # Dummy Home Assistant imports für Standalone MQTT Publisher
 class SensorEntity:

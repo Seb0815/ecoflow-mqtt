@@ -25,7 +25,7 @@ from custom_components.ecoflow_cloud.device_data import DeviceData, DeviceOption
 
 # Logging Setup
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Aktiviere DEBUG-Logging
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
@@ -40,6 +40,7 @@ class EcoflowMqttPublisher:
         self.mqtt_client = None
         self.running = False
         self.devices = {}  # Device-Instanzen für jede Seriennummer
+        self.defined_parameters_cache = {}  # Cache für definierte Parameter pro Device-Typ
         
         # Konfiguration aus Umgebungsvariablen laden
         self.load_config()
@@ -133,15 +134,75 @@ class EcoflowMqttPublisher:
                 device_instance = device_class(device_info, device_data)
                 self.devices[device_sn] = device_instance
                 
-                _LOGGER.info(f"✅ Created {device_type} device instance for {device_sn}")
+                # Lade definierte Parameter für Filterung
+                defined_params = self.get_defined_parameters_for_device(device_instance, device_type)
+                _LOGGER.info(f"Device {device_type} ({device_sn}): {len(defined_params)} defined parameters will be published via MQTT")
+                
+                _LOGGER.info(f"Created {device_type} device instance for {device_sn}")
                 
             except Exception as e:
-                _LOGGER.error(f"❌ Failed to create device instance for {device_sn}: {e}")
+                _LOGGER.error(f"Failed to create device instance for {device_sn}: {e}")
+                _LOGGER.error(f"Detailed error: {traceback.format_exc()}")
                 # Fallback: Nutze DiagnosticDevice
                 from custom_components.ecoflow_cloud.devices import DiagnosticDevice
                 self.devices[device_sn] = None  # Placeholder
         
         _LOGGER.info(f"Created {len([d for d in self.devices.values() if d is not None])} device instances")
+
+    def get_defined_parameters_for_device(self, device_instance, device_type: str) -> set:
+        """Extrahiert alle in der Device-Klasse definierten Parameter durch direkte Analyse der Device-Klasse"""
+        
+        # Cache prüfen - Parameter nur einmal pro Device-Typ extrahieren
+        if device_type in self.defined_parameters_cache:
+            _LOGGER.debug(f"Using cached parameters for {device_type}: {len(self.defined_parameters_cache[device_type])} parameters")
+            return self.defined_parameters_cache[device_type]
+        
+        defined_params = set()
+        
+        try:
+            # Verwende die neue get_defined_parameters Methode der Device-Klasse falls verfügbar
+            if hasattr(device_instance, 'get_defined_parameters') and callable(device_instance.get_defined_parameters):
+                defined_params = device_instance.get_defined_parameters()
+                _LOGGER.info(f"Used device class method: {len(defined_params)} parameters for {device_type}")
+            
+            # Fallback: Extrahiere Parameter aus sensors() Methode
+            elif hasattr(device_instance, 'sensors') and callable(device_instance.sensors):
+                try:
+                    sensors = device_instance.sensors(None)  # Dummy client
+                    
+                    for sensor in sensors:
+                        # Der dritte Parameter im Konstruktor ist der Parameter-Name
+                        if hasattr(sensor, 'attr_key') and sensor.attr_key:
+                            defined_params.add(sensor.attr_key)
+                        elif hasattr(sensor, '_attr_key') and sensor._attr_key:
+                            defined_params.add(sensor._attr_key)
+                    
+                    _LOGGER.info(f"Dynamically extracted {len(defined_params)} parameters for {device_type}")
+                    
+                except Exception as e:
+                    _LOGGER.debug(f"Dynamic parameter extraction failed for {device_type}: {e}")
+            
+            # Letzter Fallback: Lade Device-Klasse direkt für Parameter-Extraktion
+            else:
+                _LOGGER.info(f"Loading device class for parameter extraction: {device_type}")
+                device_class = self.get_device_class(device_type)
+                if device_class and hasattr(device_class, 'get_defined_parameters'):
+                    defined_params = device_class.get_defined_parameters()
+                    _LOGGER.info(f"Used direct device class: {len(defined_params)} parameters for {device_type}")
+                    
+        except Exception as e:
+            _LOGGER.error(f"Error getting defined parameters for {device_type}: {e}")
+            _LOGGER.error(f"Detailed error: {traceback.format_exc()}")
+            
+        # Wenn nichts gefunden wurde, gebe leeres Set zurück
+        if not defined_params:
+            _LOGGER.warning(f"No defined parameters found for {device_type} - all parameters will be logged only")
+        
+        # Cache die Ergebnisse
+        self.defined_parameters_cache[device_type] = defined_params
+        _LOGGER.debug(f"Cached {len(defined_params)} parameters for {device_type}")
+            
+        return defined_params
 
     def get_device_class(self, device_type: str):
         """Lädt die entsprechende Device-Klasse basierend auf dem Gerätetyp"""
@@ -179,7 +240,9 @@ class EcoflowMqttPublisher:
             _LOGGER.info(f"Successfully loaded device class: {device_type} -> {class_name}")
             return device_class
         except Exception as e:
-            _LOGGER.warning(f"Failed to load {device_type} device class: {e}, using DiagnosticDevice")
+            _LOGGER.error(f"Failed to load {device_type} device class: {e}")
+            _LOGGER.error(f"Detailed error: {traceback.format_exc()}")
+            _LOGGER.warning(f"Using DiagnosticDevice as fallback for {device_type}")
             from custom_components.ecoflow_cloud.devices import DiagnosticDevice
             return DiagnosticDevice
 
@@ -230,9 +293,9 @@ class EcoflowMqttPublisher:
                 # Verbindungsüberwachung hinzufügen
                 def connection_wrapper(client, userdata, flags, rc):
                     if rc == 0:
-                        _LOGGER.info("🔗 EcoFlow MQTT broker connection successfully established")
+                        _LOGGER.info("EcoFlow MQTT broker connection successfully established")
                     else:
-                        _LOGGER.warning(f"⚠️ EcoFlow MQTT connection failed: RC={rc}")
+                        _LOGGER.warning(f"EcoFlow MQTT connection failed: RC={rc}")
                     
                     # Original-Callback ausführen
                     if original_on_connect:
@@ -253,9 +316,9 @@ class EcoflowMqttPublisher:
                 _LOGGER.info("EcoFlow MQTT message handler successfully set")
                 
                 # Debug: MQTT-Client Status überprüfen (initial)
-                _LOGGER.info(f"🐛 EcoFlow MQTT Client initial status: Connected={ecoflow_paho_client.is_connected()}")
+                _LOGGER.info(f"EcoFlow MQTT Client initial status: Connected={ecoflow_paho_client.is_connected()}")
                 if hasattr(ecoflow_paho_client, '_host'):
-                    _LOGGER.info(f"🐛 EcoFlow MQTT Client host: {ecoflow_paho_client._host}")
+                    _LOGGER.info(f"EcoFlow MQTT Client host: {ecoflow_paho_client._host}")
                 
             else:
                 _LOGGER.warning("Could not access EcoFlow paho-mqtt client")
@@ -272,7 +335,7 @@ class EcoflowMqttPublisher:
             topic = message.topic
             payload = message.payload
             
-            _LOGGER.info(f"📨 EcoFlow MQTT message #{self.message_count} received - Topic: {topic}, Payload size: {len(payload)} bytes")
+            _LOGGER.info(f"EcoFlow MQTT message #{self.message_count} received - Topic: {topic}, Payload size: {len(payload)} bytes")
             
             # Versuche Geräte-SN zu extrahieren
             device_sn = None
@@ -299,12 +362,12 @@ class EcoflowMqttPublisher:
             
             if decoded_data and "params" in decoded_data and decoded_data["params"]:
                 param_count = len(decoded_data["params"])
-                _LOGGER.info(f"✅ Device class decoded {device_type} data: {param_count} parameters")
+                _LOGGER.info(f"Device class decoded {device_type} data: {param_count} parameters")
                 
                 # Detaillierte Parameter-Info für wichtige Werte
                 important_params = self.extract_important_parameters(decoded_data["params"])
                 if important_params:
-                    _LOGGER.info(f"🎯 Key parameters: {', '.join(important_params)}")
+                    _LOGGER.info(f"Key parameters: {', '.join(important_params)}")
                 
                 # JSON für MQTT erstellen
                 mqtt_data = {
@@ -325,7 +388,7 @@ class EcoflowMqttPublisher:
                 
             else:
                 # Fallback: Als hex-string mit Gerätetyp
-                _LOGGER.warning(f"⚠️ Device class decoding failed for {device_type}, using hex fallback")
+                _LOGGER.warning(f"Device class decoding failed for {device_type}, using hex fallback")
                 mqtt_data = {
                     "device_sn": device_sn,
                     "device_type": device_type,
@@ -346,16 +409,16 @@ class EcoflowMqttPublisher:
             device_topic = f"{self.mqtt_base_topic}/{device_type.lower()}/{device_sn}/data"
             self.mqtt_client.publish(device_topic, payload_str, retain=True)
             
-            # Parameter-spezifische Topics für ALLE Werte
+            # Parameter-spezifische Topics nur für definierte Parameter
             if "params" in mqtt_data and mqtt_data["params"]:
-                self.publish_all_parameters(device_sn, device_type, mqtt_data["params"], mqtt_data.get("timestamp", time.time()))
+                self.publish_filtered_parameters(device_instance, device_sn, device_type, mqtt_data["params"], mqtt_data.get("timestamp", time.time()))
             
             # Auch Original-Topic Structure beibehalten
             clean_topic = topic.replace("/app/", "").replace("+", "unknown")
             local_orig_topic = f"{self.mqtt_base_topic}/raw/{clean_topic}"
             self.mqtt_client.publish(local_orig_topic, payload_str, retain=True)
             
-            _LOGGER.info(f"� EcoFlow {device_type} data forwarded: {topic} -> {local_topic}")
+            _LOGGER.info(f"EcoFlow {device_type} data forwarded: {topic} -> {local_topic}")
                 
         except Exception as e:
             _LOGGER.error(f"Error forwarding EcoFlow message: {e}")
@@ -363,7 +426,7 @@ class EcoflowMqttPublisher:
             _LOGGER.error(traceback.format_exc())
 
     def decode_with_device_class(self, device_instance, device_sn: str, device_type: str, payload: bytes) -> dict:
-        """Nutzt die echte Device-Klasse für die Protobuf-Dekodierung"""
+        """Nutzt die echte Device-Klasse für die Protobuf-Dekodierung - generisch für alle Gerätetypen"""
         try:
             # Basis-Struktur
             result = {
@@ -374,39 +437,66 @@ class EcoflowMqttPublisher:
             }
             
             # Device-Klasse für Dekodierung nutzen
+            _LOGGER.debug(f"Device instance type: {type(device_instance)}")
+            _LOGGER.debug(f"Device instance has _prepare_data: {hasattr(device_instance, '_prepare_data')}")
+            
             if hasattr(device_instance, '_prepare_data'):
-                # Device hat eigene _prepare_data Methode (wie StreamAC)
+                # Device hat eigene _prepare_data Methode
+                _LOGGER.debug(f"Using _prepare_data method for {device_type}")
                 decoded_raw = device_instance._prepare_data(payload)
                 
                 if decoded_raw and "params" in decoded_raw:
                     result["params"] = decoded_raw["params"]
                     result["decoding_success"] = True
-                    _LOGGER.info(f"✅ Device class _prepare_data successful: {len(result['params'])} parameters")
+                    _LOGGER.info(f"Device class _prepare_data successful: {len(result['params'])} parameters")
                 else:
-                    _LOGGER.debug(f"Device _prepare_data returned no params")
+                    _LOGGER.debug(f"Device _prepare_data returned no params: {decoded_raw}")
                     result["decoding_success"] = False
                     
             elif hasattr(device_instance, 'data') and hasattr(device_instance.data, 'update_data'):
                 # Standard BaseDevice mit EcoflowDataHolder
-                # Simuliere update_data Aufruf
-                device_instance.data.update_data(payload)
+                _LOGGER.debug(f"Using DataHolder for {device_type}")
                 
-                # Daten aus dem DataHolder extrahieren
-                if hasattr(device_instance.data, '_data') and device_instance.data._data:
-                    result["params"] = dict(device_instance.data._data)
+                # Versuche direkte Protobuf-Dekodierung für bessere Ergebnisse
+                protobuf_decoded = self.decode_device_protobuf_direct(device_type, payload)
+                if protobuf_decoded and protobuf_decoded.get("params"):
+                    # Nutze die direkten Protobuf-Ergebnisse
+                    device_instance.data.update_data(protobuf_decoded)
+                    result["params"] = protobuf_decoded["params"]
                     result["decoding_success"] = True
-                    _LOGGER.info(f"✅ Device DataHolder successful: {len(result['params'])} parameters")
+                    _LOGGER.info(f"Device DataHolder with protobuf successful: {len(result['params'])} parameters")
                 else:
-                    _LOGGER.debug(f"Device DataHolder returned no data")
-                    result["decoding_success"] = False
+                    # Fallback: Hex-Darstellung
+                    hex_data = {"params": {"raw_hex": payload.hex(), "raw_length": len(payload)}}
+                    device_instance.data.update_data(hex_data)
+                    
+                    # Daten aus dem DataHolder extrahieren
+                    if hasattr(device_instance.data, 'params') and device_instance.data.params:
+                        result["params"] = dict(device_instance.data.params)
+                        result["decoding_success"] = True
+                        _LOGGER.info(f"Device DataHolder fallback successful: {len(result['params'])} parameters")
+                    else:
+                        _LOGGER.debug(f"Device DataHolder returned no data")
+                        result["decoding_success"] = False
             else:
                 _LOGGER.warning(f"Device instance {device_type} has no known decoding method")
+                
+                # Universeller Fallback: Direktes Protobuf-Dekodieren für alle Gerätetypen
+                _LOGGER.info(f"Attempting direct protobuf decoding for {device_type}")
+                fallback_decoded = self.decode_device_protobuf_direct(device_type, payload)
+                if fallback_decoded and fallback_decoded.get("params"):
+                    result["params"] = fallback_decoded["params"]
+                    result["decoding_success"] = True
+                    _LOGGER.info(f"Direct protobuf successful: {len(result['params'])} parameters")
+                    return result
+                
                 result["decoding_success"] = False
             
             return result
             
         except Exception as e:
-            _LOGGER.error(f"❌ Device class decoding failed for {device_type}: {e}")
+            _LOGGER.error(f"Device class decoding failed for {device_type}: {e}")
+            _LOGGER.error(f"Full traceback: {traceback.format_exc()}")
             return {
                 "device_sn": device_sn,
                 "device_type": device_type,
@@ -475,6 +565,108 @@ class EcoflowMqttPublisher:
                         
         except Exception as e:
             _LOGGER.debug(f"Error publishing parameter topics: {e}")
+
+    def publish_filtered_parameters(self, device_instance, device_sn: str, device_type: str, params: dict, timestamp: float):
+        """Publiziert nur definierte Parameter über MQTT, loggt alle anderen für mögliche Integration"""
+        try:
+            # Hole definierte Parameter für dieses Device
+            defined_params = self.get_defined_parameters_for_device(device_instance, device_type)
+            
+            # Separiere Parameter in definierte und undefinierte
+            defined_found = {}
+            undefined_found = {}
+            
+            # Spezielle SOC-Parameter immer als definiert behandeln
+            soc_patterns = [
+                'soc', 'f32showsoc', 'bmsbattsoc', 'cmsbattsoc', 'battery_soc',
+                'actsoc', 'targetsoc', 'maxchgsoc', 'mindchgsoc', 'diffsoc',
+                'backupreversesoc', 'lcdshowsoc', 'f32lcdshowsoc'
+            ]
+            
+            for param_name, param_value in params.items():
+                param_lower = param_name.lower().replace('_', '').replace('.', '')
+                
+                # Check if it's a SOC parameter or already defined
+                is_soc_param = any(soc_pattern in param_lower for soc_pattern in soc_patterns)
+                is_defined = param_name in defined_params
+                
+                if is_defined or is_soc_param:
+                    defined_found[param_name] = param_value
+                    if is_soc_param and not is_defined:
+                        _LOGGER.info(f"SOC parameter '{param_name}' auto-promoted to defined: {param_value}")
+                else:
+                    undefined_found[param_name] = param_value
+            
+            # Publiziere nur definierte Parameter über MQTT
+            for param_name, param_value in defined_found.items():
+                if param_name in ["error", "raw_hex", "raw_length"]:
+                    # Fehler-Parameter auf separates Topic
+                    topic = f"{self.mqtt_base_topic}/{device_sn}/errors/{param_name}"
+                else:
+                    # Normale Parameter auf eigenes Topic
+                    topic = f"{self.mqtt_base_topic}/{device_sn}/{param_name}"
+                
+                # Parameter-Wert zu JSON-kompatiblem Format konvertieren
+                json_compatible_value = self.convert_to_json_compatible(param_value)
+                
+                # Nur den reinen Wert publizieren (ohne Metadaten)
+                try:
+                    # Für einfache Werte: direkt als String oder Zahl publizieren
+                    if isinstance(json_compatible_value, (int, float)):
+                        payload = str(json_compatible_value)
+                    elif isinstance(json_compatible_value, bool):
+                        payload = "true" if json_compatible_value else "false"
+                    elif isinstance(json_compatible_value, str):
+                        payload = json_compatible_value
+                    elif json_compatible_value is None:
+                        payload = "null"
+                    else:
+                        # Für komplexe Objekte: als JSON publizieren
+                        payload = json.dumps(json_compatible_value, ensure_ascii=False, default=str)
+                    
+                    self.mqtt_client.publish(topic, payload, retain=True)
+                    
+                except (TypeError, ValueError) as json_error:
+                    # Fallback: String-Konvertierung
+                    payload = str(json_compatible_value)
+                    self.mqtt_client.publish(topic, payload, retain=True)
+                    _LOGGER.debug(f"Used string fallback for parameter {param_name}: {json_error}")
+            
+            # Logge undefinierte Parameter für mögliche Integration
+            if undefined_found:
+                undefined_summary = []
+                for param_name, param_value in undefined_found.items():
+                    # Erstelle kompakte Darstellung
+                    if isinstance(param_value, (int, float)):
+                        undefined_summary.append(f"{param_name}={param_value}")
+                    elif isinstance(param_value, bool):
+                        undefined_summary.append(f"{param_name}={param_value}")
+                    elif isinstance(param_value, str) and len(param_value) < 50:
+                        undefined_summary.append(f"{param_name}='{param_value}'")
+                    else:
+                        undefined_summary.append(f"{param_name}=<{type(param_value).__name__}>")
+                
+                _LOGGER.info(f"UNDEFINED PARAMETERS for {device_type} ({device_sn}): {len(undefined_found)} parameters found")
+                _LOGGER.info(f"UNDEFINED PARAMETERS: {', '.join(undefined_summary[:10])}" + 
+                           (f" ... and {len(undefined_summary)-10} more" if len(undefined_summary) > 10 else ""))
+                
+                # Zusätzlich: Detaillierte Info für interessante Parameter
+                interesting_undefined = {}
+                for param_name, param_value in undefined_found.items():
+                    # Suche nach interessanten Parametern (SOC, Power, Voltage, etc.)
+                    if any(keyword in param_name.lower() for keyword in 
+                           ["soc", "power", "watt", "volt", "temp", "cycle", "cap", "energy"]):
+                        interesting_undefined[param_name] = param_value
+                
+                if interesting_undefined:
+                    _LOGGER.info(f"INTERESTING UNDEFINED for {device_type}: {interesting_undefined}")
+            
+            _LOGGER.debug(f"Published {len(defined_found)} defined parameters for {device_sn}, " +
+                         f"logged {len(undefined_found)} undefined parameters")
+                        
+        except Exception as e:
+            _LOGGER.error(f"Error in filtered parameter publishing: {e}")
+            _LOGGER.error(traceback.format_exc())
 
     def publish_all_parameters(self, device_sn: str, device_type: str, params: dict, timestamp: float):
         """Publiziert ALLE Parameter auf separate MQTT Topics - nur der reine Wert"""
@@ -684,7 +876,357 @@ class EcoflowMqttPublisher:
             _LOGGER.warning(f"Completely unknown device type for SN: {device_sn}")
             return "UNKNOWN"
 
-    def decode_stream_protobuf(self, payload: bytes) -> dict:
+    def decode_device_protobuf_direct(self, device_type: str, payload: bytes) -> dict:
+        """Universelle direkte Protobuf-Dekodierung als Fallback für alle Gerätetypen"""
+        try:
+            _LOGGER.debug(f"Direct protobuf decoding: {device_type} - {len(payload)} bytes")
+            
+            # Gerätespezifische Dekodierung basierend auf Gerätetyp
+            if device_type in ["STREAM_ULTRA", "STREAM_AC", "STREAM_PRO"]:
+                return self._decode_stream_protobuf(payload)
+            elif device_type in ["DELTA_2", "DELTA_2_MAX", "DELTA_PRO", "DELTA_MAX", "DELTA_MINI"]:
+                return self._decode_delta_protobuf(payload)
+            elif device_type in ["RIVER_2", "RIVER_2_MAX", "RIVER_2_PRO", "RIVER_MAX", "RIVER_MINI", "RIVER_PRO"]:
+                return self._decode_river_protobuf(payload)
+            elif device_type == "POWERSTREAM":
+                return self._decode_powerstream_protobuf(payload)
+            elif device_type == "GLACIER":
+                return self._decode_glacier_protobuf(payload)
+            elif device_type == "WAVE_2":
+                return self._decode_wave_protobuf(payload)
+            elif device_type == "SMART_METER":
+                return self._decode_smart_meter_protobuf(payload)
+            else:
+                # Universeller Fallback für unbekannte Gerätetypen
+                return self._decode_generic_protobuf(payload)
+                
+        except Exception as e:
+            _LOGGER.debug(f"Direct protobuf decoding failed for {device_type}: {e}")
+            return {"params": {}}
+    def _decode_stream_protobuf(self, payload: bytes) -> dict:
+        """Dekodiert Stream AC/Ultra/Pro Protobuf-Daten"""
+        try:
+            from custom_components.ecoflow_cloud.devices.internal.proto import stream_ac_pb2
+            
+            # Versuche als SendHeaderStreamMsg
+            try:
+                packet = stream_ac_pb2.SendHeaderStreamMsg()
+                packet.ParseFromString(payload)
+                
+                decoded = {"params": {}}
+                
+                if hasattr(packet, 'msg') and packet.msg:
+                    _LOGGER.debug("SendHeaderStreamMsg.msg found")
+                    
+                    # Sichere Header-Felder extrahieren
+                    for field_name in ['cmd_id', 'src', 'dest', 'seq']:
+                        if hasattr(packet.msg, field_name):
+                            try:
+                                if packet.msg.HasField(field_name):
+                                    value = getattr(packet.msg, field_name)
+                                    decoded["params"][field_name] = value
+                            except Exception:
+                                continue
+                    
+                    # pdata verarbeiten
+                    if hasattr(packet.msg, "pdata") and packet.msg.pdata and len(packet.msg.pdata) > 0:
+                        pdata = packet.msg.pdata
+                        _LOGGER.debug(f"Stream pdata found: {len(pdata)} bytes")
+                        
+                        # Liste der Stream-Message-Typen
+                        stream_types = [
+                            ("Champ_cmd21_3", stream_ac_pb2.Champ_cmd21_3),
+                            ("Champ_cmd21", stream_ac_pb2.Champ_cmd21), 
+                            ("Champ_cmd50", stream_ac_pb2.Champ_cmd50),
+                            ("Champ_cmd50_3", stream_ac_pb2.Champ_cmd50_3),
+                            ("HeaderStream", stream_ac_pb2.HeaderStream)
+                        ]
+                        
+                        for stream_name, stream_class in stream_types:
+                            try:
+                                content = stream_class()
+                                content.ParseFromString(pdata)
+                                
+                                content_str = str(content)
+                                if len(content_str) > 0 and content_str.strip():
+                                    _LOGGER.debug(f"Successfully parsed {stream_name}")
+                                    
+                                    # Extrahiere alle verfügbaren Felder
+                                    for descriptor in content.DESCRIPTOR.fields:
+                                        try:
+                                            if not content.HasField(descriptor.name):
+                                                continue
+                                            
+                                            value = getattr(content, descriptor.name)
+                                            field_name = descriptor.name
+                                            
+                                            # Parameter verarbeiten
+                                            self._process_stream_field(decoded["params"], field_name, value)
+                                            
+                                        except Exception as field_error:
+                                            _LOGGER.debug(f"Failed to process field {descriptor.name}: {field_error}")
+                                            continue
+                                    
+                                    # Wenn wir wichtige Parameter gefunden haben, früh zurückkehren
+                                    if self._has_important_parameters(decoded["params"]):
+                                        _LOGGER.info(f"Found key parameters in {stream_name}")
+                                        break
+                            
+                            except Exception as e:
+                                _LOGGER.debug(f"Failed to parse {stream_name}: {e}")
+                                continue
+                
+                if decoded["params"]:
+                    _LOGGER.info(f"Stream protobuf decoding successful: {len(decoded['params'])} parameters")
+                    return decoded
+                    
+            except Exception as stream_error:
+                _LOGGER.debug(f"Stream protobuf decoding failed: {stream_error}")
+            
+            return {"params": {}}
+            
+        except ImportError as e:
+            _LOGGER.debug(f"Cannot import stream_ac_pb2 for direct decoding: {e}")
+            return {"params": {}}
+        except Exception as e:
+            _LOGGER.debug(f"Stream protobuf decoding completely failed: {e}")
+            return {"params": {}}
+
+    def _process_stream_field(self, params: dict, field_name: str, value):
+        """Verarbeitet Stream-Felder und fügt sie zu den Parametern hinzu"""
+        try:
+            # Spezielle Stream-Parameter verarbeiten
+            if field_name == "f32ShowSoc":
+                params["battery_soc"] = round(value, 2)
+                params["f32ShowSoc"] = value
+                _LOGGER.info(f"Found Battery SOC: {params['battery_soc']}%")
+            elif field_name == "bmsBattSoc":
+                params["bms_battery_soc"] = round(value, 2)  
+                params["bmsBattSoc"] = value
+                _LOGGER.info(f"Found BMS Battery SOC: {params['bms_battery_soc']}%")
+            elif field_name == "soc":
+                params["soc"] = value
+                params["battery_percentage"] = value
+                _LOGGER.info(f"Found SOC: {value}%")
+            elif field_name == "cycles":
+                params["battery_cycles"] = value
+                params["cycles"] = value
+                _LOGGER.info(f"Found Battery cycles: {value}")
+            elif field_name in ["gridConnectionPower", "inputWatts", "outputWatts"]:
+                params[field_name] = round(value, 2)
+                _LOGGER.info(f"Found {field_name}: {params[field_name]}W")
+            else:
+                params[field_name] = value
+                _LOGGER.debug(f"Found {field_name}: {value}")
+        except Exception as e:
+            _LOGGER.debug(f"Error processing stream field {field_name}: {e}")
+
+    def _has_important_parameters(self, params: dict) -> bool:
+        """Prüft ob wichtige Parameter gefunden wurden"""
+        important_keys = ["battery_soc", "soc", "f32ShowSoc", "bmsBattSoc", "gridConnectionPower"]
+        return any(key in params for key in important_keys)
+
+    def _decode_delta_protobuf(self, payload: bytes) -> dict:
+        """Dekodiert Delta Protobuf-Daten"""
+        try:
+            # Versuche mit generischen EcoPacket
+            from custom_components.ecoflow_cloud.devices.internal.proto import ecopacket_pb2
+            
+            try:
+                packet = ecopacket_pb2.Message()
+                packet.ParseFromString(payload)
+                
+                decoded = {"params": {}}
+                self._extract_common_packet_fields(packet, decoded["params"])
+                
+                if decoded["params"]:
+                    _LOGGER.info(f"Delta protobuf decoding successful: {len(decoded['params'])} parameters")
+                    return decoded
+                    
+            except Exception as e:
+                _LOGGER.debug(f"Delta protobuf parsing failed: {e}")
+            
+            return {"params": {}}
+            
+        except ImportError as e:
+            _LOGGER.debug(f"Cannot import protobuf modules for Delta: {e}")
+            return {"params": {}}
+
+    def _decode_river_protobuf(self, payload: bytes) -> dict:
+        """Dekodiert River Protobuf-Daten"""
+        try:
+            # Versuche mit generischen EcoPacket
+            from custom_components.ecoflow_cloud.devices.internal.proto import ecopacket_pb2
+            
+            try:
+                packet = ecopacket_pb2.Message()
+                packet.ParseFromString(payload)
+                
+                decoded = {"params": {}}
+                self._extract_common_packet_fields(packet, decoded["params"])
+                
+                if decoded["params"]:
+                    _LOGGER.info(f"River protobuf decoding successful: {len(decoded['params'])} parameters")
+                    return decoded
+                    
+            except Exception as e:
+                _LOGGER.debug(f"River protobuf parsing failed: {e}")
+            
+            return {"params": {}}
+            
+        except ImportError as e:
+            _LOGGER.debug(f"Cannot import protobuf modules for River: {e}")
+            return {"params": {}}
+
+    def _decode_powerstream_protobuf(self, payload: bytes) -> dict:
+        """Dekodiert PowerStream Protobuf-Daten"""
+        try:
+            # Versuche mit PowerStream-spezifischen Protobuf
+            from custom_components.ecoflow_cloud.devices.internal.proto import powerstream_pb2
+            
+            try:
+                packet = powerstream_pb2.PowerStreamMessage()
+                packet.ParseFromString(payload)
+                
+                decoded = {"params": {}}
+                self._extract_common_packet_fields(packet, decoded["params"])
+                
+                if decoded["params"]:
+                    _LOGGER.info(f"PowerStream protobuf decoding successful: {len(decoded['params'])} parameters")
+                    return decoded
+                    
+            except Exception as e:
+                _LOGGER.debug(f"PowerStream protobuf parsing failed: {e}")
+            
+            # Fallback zu generischem EcoPacket
+            return self._decode_generic_protobuf(payload)
+            
+        except ImportError as e:
+            _LOGGER.debug(f"Cannot import powerstream_pb2: {e}")
+            return self._decode_generic_protobuf(payload)
+
+    def _decode_glacier_protobuf(self, payload: bytes) -> dict:
+        """Dekodiert Glacier Protobuf-Daten"""
+        try:
+            # Fallback zu generischem EcoPacket
+            return self._decode_generic_protobuf(payload)
+        except Exception as e:
+            _LOGGER.debug(f"Glacier protobuf decoding failed: {e}")
+            return {"params": {}}
+
+    def _decode_wave_protobuf(self, payload: bytes) -> dict:
+        """Dekodiert Wave Protobuf-Daten"""
+        try:
+            # Fallback zu generischem EcoPacket
+            return self._decode_generic_protobuf(payload)
+        except Exception as e:
+            _LOGGER.debug(f"Wave protobuf decoding failed: {e}")
+            return {"params": {}}
+
+    def _decode_smart_meter_protobuf(self, payload: bytes) -> dict:
+        """Dekodiert Smart Meter Protobuf-Daten"""
+        try:
+            # Fallback zu generischem EcoPacket
+            return self._decode_generic_protobuf(payload)
+        except Exception as e:
+            _LOGGER.debug(f"Smart Meter protobuf decoding failed: {e}")
+            return {"params": {}}
+
+    def _decode_generic_protobuf(self, payload: bytes) -> dict:
+        """Universeller Fallback für alle unbekannten Gerätetypen"""
+        try:
+            # Versuche mit generischen EcoPacket
+            from custom_components.ecoflow_cloud.devices.internal.proto import ecopacket_pb2
+            
+            try:
+                packet = ecopacket_pb2.Message()
+                packet.ParseFromString(payload)
+                
+                decoded = {"params": {}}
+                self._extract_common_packet_fields(packet, decoded["params"])
+                
+                if decoded["params"]:
+                    _LOGGER.info(f"Generic protobuf decoding successful: {len(decoded['params'])} parameters")
+                    return decoded
+                    
+            except Exception as e:
+                _LOGGER.debug(f"Generic protobuf parsing failed: {e}")
+            
+            # Fallback: Hex-Analyse
+            return self._analyze_hex_data(payload)
+            
+        except ImportError as e:
+            _LOGGER.debug(f"Cannot import ecopacket_pb2: {e}")
+            return self._analyze_hex_data(payload)
+
+    def _extract_common_packet_fields(self, packet, params: dict):
+        """Extrahiert gemeinsame Felder aus EcoPacket-Strukturen"""
+        try:
+            # Standard EcoPacket Felder
+            common_fields = ['cmd_func', 'cmd_id', 'device_sn', 'src', 'dest', 'seq']
+            
+            for field_name in common_fields:
+                if hasattr(packet, field_name):
+                    try:
+                        if packet.HasField(field_name):
+                            value = getattr(packet, field_name)
+                            params[field_name] = value
+                            _LOGGER.debug(f"{field_name}: {value}")
+                    except Exception:
+                        continue
+            
+            # Data-Feld verarbeiten wenn vorhanden
+            if hasattr(packet, 'data') and packet.HasField('data'):
+                data_field = packet.data
+                _LOGGER.debug(f"Packet data field found: {len(data_field)} bytes")
+                
+                # Versuche data-Feld als weitere Protobuf-Struktur zu dekodieren
+                # Dies ist geräte-spezifisch, daher nur grundlegende Analyse
+                params["data_length"] = len(data_field)
+                params["data_hex"] = data_field.hex()[:100] + "..." if len(data_field.hex()) > 100 else data_field.hex()
+                
+        except Exception as e:
+            _LOGGER.debug(f"Error extracting common packet fields: {e}")
+
+    def _analyze_hex_data(self, payload: bytes) -> dict:
+        """Analysiert Hex-Daten um mögliche Informationen zu extrahieren"""
+        try:
+            analysis = {
+                "params": {
+                    "raw_hex": payload.hex()[:200] + "..." if len(payload.hex()) > 200 else payload.hex(),
+                    "raw_length": len(payload),
+                    "first_bytes": payload[:8].hex() if len(payload) >= 8 else payload.hex(),
+                    "last_bytes": payload[-8:].hex() if len(payload) >= 8 else "",
+                }
+            }
+            
+            # Suche nach bekannten Patterns
+            hex_str = payload.hex()
+            
+            # Protobuf-typische Patterns
+            if "0a" in hex_str[:20]:
+                analysis["params"]["protobuf_pattern"] = True
+            
+            # Versuche Float-Werte zu finden (SOC könnte als Float kodiert sein)
+            import struct
+            float_candidates = []
+            for i in range(0, len(payload) - 3, 4):
+                try:
+                    float_val = struct.unpack('<f', payload[i:i+4])[0]
+                    if 0 <= float_val <= 100:
+                        float_candidates.append((i, float_val))
+                except:
+                    continue
+            
+            if float_candidates:
+                analysis["params"]["potential_soc_values"] = [f"{val:.2f}" for _, val in float_candidates[:3]]
+            
+            _LOGGER.debug(f"Hex analysis: {len(payload)} bytes -> {len(analysis['params'])} analysis fields")
+            return analysis
+            
+        except Exception as e:
+            _LOGGER.debug(f"Hex analysis failed: {e}")
+            return {"params": {"raw_hex": payload.hex() if payload else "", "raw_length": len(payload) if payload else 0}}
         """Dekodiert Stream AC/Ultra/Pro Protobuf-Daten"""
         try:
             # Direkte Stream-Dekodierung mit verbessertem Logging
@@ -698,7 +1240,7 @@ class EcoflowMqttPublisher:
                 packet = ecopacket_pb2.Message()
                 packet.ParseFromString(payload)
                 
-                _LOGGER.info(f"✅ EcoPacket Message parsing successful")
+                _LOGGER.info(f"EcoPacket Message parsing successful")
                 
                 decoded["protobuf_success"] = True
                 decoded["message_type"] = "EcoPacketMessage"
@@ -706,26 +1248,26 @@ class EcoflowMqttPublisher:
                 # Extrahiere Felder aus Message
                 if hasattr(packet, 'cmd_func') and packet.HasField('cmd_func'):
                     decoded["params"]["cmd_func"] = packet.cmd_func
-                    _LOGGER.info(f"� cmd_func: {packet.cmd_func}")
+                    _LOGGER.info(f"cmd_func: {packet.cmd_func}")
                 
                 if hasattr(packet, 'cmd_id') and packet.HasField('cmd_id'):
                     decoded["params"]["cmd_id"] = packet.cmd_id
-                    _LOGGER.info(f"📝 cmd_id: {packet.cmd_id}")
+                    _LOGGER.info(f"cmd_id: {packet.cmd_id}")
                 
                 if hasattr(packet, 'device_sn') and packet.HasField('device_sn'):
                     decoded["params"]["device_sn"] = packet.device_sn
-                    _LOGGER.info(f"📝 device_sn: {packet.device_sn}")
+                    _LOGGER.info(f"device_sn: {packet.device_sn}")
                 
                 # Wichtig: data Feld verarbeiten
                 if hasattr(packet, 'data') and packet.HasField('data'):
                     data_field = packet.data
-                    _LOGGER.info(f"🔍 EcoPacket data field found: {len(data_field)} bytes")
+                    _LOGGER.info(f"EcoPacket data field found: {len(data_field)} bytes")
                     
                     # Versuche data als Stream-spezifischen Content zu dekodieren
                     stream_data = self.decode_stream_data_field(data_field)
                     if stream_data:
                         decoded["params"].update(stream_data)
-                        _LOGGER.info(f"✅ Stream data decoded: {len(stream_data)} parameters")
+                        _LOGGER.info(f"Stream data decoded: {len(stream_data)} parameters")
                 
                 # Wenn wir Parameter gefunden haben, sind wir erfolgreich
                 if len(decoded["params"]) > 0:
@@ -741,14 +1283,14 @@ class EcoflowMqttPublisher:
                 packet = stream_ac_pb2.SendHeaderStreamMsg()
                 packet.ParseFromString(payload)
                 
-                _LOGGER.info(f"✅ SendHeaderStreamMsg parsing successful (fallback)")
+                _LOGGER.info(f"SendHeaderStreamMsg parsing successful (fallback)")
                 
                 decoded["protobuf_success"] = True
                 decoded["message_type"] = "SendHeaderStreamMsg"
                 
                 # Sichere Attribut-Zugriffe ohne problematische Felder
                 if hasattr(packet, 'msg') and packet.msg:
-                    _LOGGER.info(f"🔍 SendHeaderStreamMsg.msg found")
+                    _LOGGER.info(f"SendHeaderStreamMsg.msg found")
                     
                     # Nur sichere Felder verwenden
                     for field_name in ['cmd_id', 'src', 'dest', 'check_num', 'seq', 'version']:
@@ -757,14 +1299,14 @@ class EcoflowMqttPublisher:
                                 if packet.msg.HasField(field_name):
                                     value = getattr(packet.msg, field_name)
                                     decoded["params"][field_name] = value
-                                    _LOGGER.debug(f"📝 {field_name}: {value}")
+                                    _LOGGER.debug(f"{field_name}: {value}")
                             except Exception:
                                 continue
                     
                     # Verarbeite pdata wenn vorhanden
                     if hasattr(packet.msg, "pdata") and packet.msg.pdata and len(packet.msg.pdata) > 0:
                         pdata = packet.msg.pdata
-                        _LOGGER.info(f"🔍 Stream pdata found: {len(pdata)} bytes")
+                        _LOGGER.info(f"Stream pdata found: {len(pdata)} bytes")
                         
                         # Versuche pdata zu dekodieren
                         pdata_decoded = self.decode_stream_data_field(pdata)
@@ -836,7 +1378,7 @@ class EcoflowMqttPublisher:
                     # Prüfe ob wirklicher Inhalt vorhanden ist (wie in Original)
                     content_str = str(content)
                     if len(content_str) > 0 and content_str.strip():
-                        _LOGGER.info(f"✅ Successfully parsed {stream_name}")
+                        _LOGGER.info(f"Successfully parsed {stream_name}")
                         success_count += 1
                         
                         # Extrahiere alle Felder mit genau der gleichen Logik wie stream_ac.py
@@ -854,55 +1396,55 @@ class EcoflowMqttPublisher:
                                 if field_name == "f32ShowSoc":
                                     result["battery_soc"] = round(value, 2)
                                     result["f32ShowSoc"] = value
-                                    _LOGGER.info(f"🔋 Battery SOC: {result['battery_soc']}%")
+                                    _LOGGER.info(f"Battery SOC: {result['battery_soc']}%")
                                 elif field_name == "bmsBattSoc":
                                     result["bms_battery_soc"] = round(value, 2)  
                                     result["bmsBattSoc"] = value
-                                    _LOGGER.info(f"🔋 BMS Battery SOC: {result['bms_battery_soc']}%")
+                                    _LOGGER.info(f"BMS Battery SOC: {result['bms_battery_soc']}%")
                                 elif field_name == "soc":
                                     result["soc"] = value
                                     result["battery_percentage"] = value
-                                    _LOGGER.info(f"🔋 SOC: {value}%")
+                                    _LOGGER.info(f"SOC: {value}%")
                                 elif field_name in ["bmsChgRemTime", "bmsDsgRemTime"]:
                                     result[field_name] = value
                                     if field_name == "bmsChgRemTime":
                                         result["charge_remaining_minutes"] = value
-                                        _LOGGER.info(f"⏱️ Charge remaining: {value} min")
+                                        _LOGGER.info(f"Charge remaining: {value} min")
                                     elif field_name == "bmsDsgRemTime":
                                         result["discharge_remaining_minutes"] = value
-                                        _LOGGER.info(f"⏱️ Discharge remaining: {value} min")
+                                        _LOGGER.info(f"Discharge remaining: {value} min")
                                 elif field_name == "cycles":
                                     result["battery_cycles"] = value
                                     result["cycles"] = value
-                                    _LOGGER.info(f"🔄 Battery cycles: {value}")
+                                    _LOGGER.info(f"Battery cycles: {value}")
                                 elif field_name in ["designCap", "fullCap", "remainCap"]:
                                     result[field_name] = value
-                                    _LOGGER.info(f"🔋 {field_name}: {value}")
+                                    _LOGGER.info(f"{field_name}: {value}")
                                 elif field_name in ["gridConnectionPower", "inputWatts", "outputWatts"]:
                                     result[field_name] = round(value, 2)
-                                    _LOGGER.info(f"⚡ {field_name}: {result[field_name]}W")
+                                    _LOGGER.info(f"{field_name}: {result[field_name]}W")
                                 elif field_name in ["powGetPvSum", "powGetBpCms", "powGetSysGrid"]:
                                     result[field_name] = round(value, 2)
-                                    _LOGGER.info(f"⚡ {field_name}: {result[field_name]}W")
+                                    _LOGGER.info(f"{field_name}: {result[field_name]}W")
                                 elif field_name in ["maxCellTemp", "minCellTemp", "temp"]:
                                     result[field_name] = value
-                                    _LOGGER.debug(f"🌡️ {field_name}: {value}°C")
+                                    _LOGGER.debug(f"{field_name}: {value}°C")
                                 elif field_name in ["maxCellVol", "minCellVol", "vol"]:
                                     result[field_name] = value
-                                    _LOGGER.debug(f"⚡ {field_name}: {value}V")
+                                    _LOGGER.debug(f"{field_name}: {value}V")
                                 else:
                                     result[field_name] = value
-                                    _LOGGER.debug(f"📊 {field_name}: {value}")
+                                    _LOGGER.debug(f"{field_name}: {value}")
                                     
                             except Exception as field_error:
                                 _LOGGER.debug(f"Failed to process field {descriptor.name}: {field_error}")
                                 continue
                         
-                        _LOGGER.info(f"📊 {stream_name}: extracted {field_count} fields")
+                        _LOGGER.info(f"{stream_name}: extracted {field_count} fields")
                         
                         # Wenn wir wichtige Parameter gefunden haben, können wir früh zurückkehren
                         if any(key in result for key in ["battery_soc", "soc", "battery_percentage"]):
-                            _LOGGER.info(f"✅ Found key battery parameters in {stream_name}")
+                            _LOGGER.info(f"Found key battery parameters in {stream_name}")
                             break
                 
                 except Exception as e:
@@ -910,7 +1452,7 @@ class EcoflowMqttPublisher:
                     continue
             
             if success_count > 0:
-                _LOGGER.info(f"✅ Stream data parsing successful: {success_count} message types parsed, {len(result)} total parameters")
+                _LOGGER.info(f"Stream data parsing successful: {success_count} message types parsed, {len(result)} total parameters")
                 
                 # Log wichtige gefundene Parameter
                 key_params = []
@@ -926,7 +1468,7 @@ class EcoflowMqttPublisher:
                     key_params.append(f"power_fields={len(power_params)}")
                 
                 if key_params:
-                    _LOGGER.info(f"🎯 Key parameters: {', '.join(key_params)}")
+                    _LOGGER.info(f"Key parameters: {', '.join(key_params)}")
                 
                 return result
             else:
@@ -1303,11 +1845,11 @@ class EcoflowMqttPublisher:
                 
                 if ecoflow_paho_client:
                     connected = ecoflow_paho_client.is_connected()
-                    _LOGGER.info(f"🔍 EcoFlow MQTT final status: Connected={connected}")
+                    _LOGGER.info(f"EcoFlow MQTT final status: Connected={connected}")
                     if not connected:
-                        _LOGGER.warning("⚠️ EcoFlow MQTT not yet connected - messages may arrive delayed")
+                        _LOGGER.warning("EcoFlow MQTT not yet connected - messages may arrive delayed")
                     else:
-                        _LOGGER.info("✅ EcoFlow MQTT fully connected and ready")
+                        _LOGGER.info("EcoFlow MQTT fully connected and ready")
             
             # Nachrichten-Zähler für Debugging
             self.message_count = 0

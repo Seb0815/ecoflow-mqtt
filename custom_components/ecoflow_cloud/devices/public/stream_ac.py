@@ -277,4 +277,3 @@ class StreamAC(BaseDevice):
     def _status_sensor(self, client: EcoflowApiClient) -> StatusSensorEntity:
         return StatusSensorEntity(client, self)
 
-

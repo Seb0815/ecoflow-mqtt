@@ -1,57 +1,228 @@
 import enum
 import logging
 import struct
-from typing import Any, Mapping, OrderedDict, override
+from typing import Any, Mapping, OrderedDict
+from datetime import datetime, timezone
 
-from homeassistant.components.binary_sensor import (
-    BinarySensorDeviceClass,
-    BinarySensorEntity,
-)
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorStateClass,
-)
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    PERCENTAGE,
-    UnitOfElectricCurrent,
-    UnitOfElectricPotential,
-    UnitOfEnergy,
-    UnitOfFrequency,
-    UnitOfPower,
-    UnitOfTemperature,
-    UnitOfTime,
-)
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import EntityCategory
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.util import dt
+# Python 3.11 compatibility: override is only available in 3.12+
+try:
+    from typing import override
+except ImportError:
+    # Fallback for Python < 3.12
+    def override(func):
+        return func
 
-from . import (
-    ATTR_MQTT_CONNECTED,
-    ATTR_QUOTA_REQUESTS,
-    ATTR_STATUS_DATA_LAST_UPDATE,
-    ATTR_STATUS_PHASE,
-    ATTR_STATUS_RECONNECTS,
-    ATTR_STATUS_SN,
-    ECOFLOW_DOMAIN,
-)
+# Docker-kompatible Fallbacks für Home Assistant Imports
+try:
+    from homeassistant.components.binary_sensor import (
+        BinarySensorDeviceClass,
+        BinarySensorEntity,
+    )
+    from homeassistant.components.sensor import (
+        SensorDeviceClass,
+        SensorEntity,
+        SensorStateClass,
+    )
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.const import (
+        PERCENTAGE,
+        UnitOfElectricCurrent,
+        UnitOfElectricPotential,
+        UnitOfEnergy,
+        UnitOfFrequency,
+        UnitOfPower,
+        UnitOfTemperature,
+        UnitOfTime,
+    )
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity import EntityCategory
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+    from homeassistant.util import dt
+    
+    # Home Assistant ist verfügbar
+    HOMEASSISTANT_AVAILABLE = True
+    
+except ImportError:
+    # Docker-kompatible Fallbacks wenn Home Assistant nicht verfügbar ist
+    HOMEASSISTANT_AVAILABLE = False
+    
+    # Minimal EntityCategory Ersatz
+    class EntityCategory:
+        DIAGNOSTIC = "diagnostic"
+        CONFIG = "config"
+    
+    # Minimal SensorDeviceClass Ersatz
+    class SensorDeviceClass:
+        BATTERY = "battery"
+        VOLTAGE = "voltage"
+        CURRENT = "current"
+        POWER = "power"
+        ENERGY = "energy"
+        TEMPERATURE = "temperature"
+        DURATION = "duration"
+        FREQUENCY = "frequency"
+    
+    # Minimal SensorStateClass Ersatz
+    class SensorStateClass:
+        MEASUREMENT = "measurement"
+        TOTAL_INCREASING = "total_increasing"
+    
+    # Minimal BinarySensorDeviceClass Ersatz
+    class BinarySensorDeviceClass:
+        BATTERY_CHARGING = "battery_charging"
+    
+    # Unit-Konstanten
+    PERCENTAGE = "%"
+    
+    class UnitOfElectricCurrent:
+        AMPERE = "A"
+        MILLIAMPERE = "mA"
+    
+    class UnitOfElectricPotential:
+        VOLT = "V"
+        MILLIVOLT = "mV"
+    
+    class UnitOfEnergy:
+        WATT_HOUR = "Wh"
+    
+    class UnitOfFrequency:
+        HERTZ = "Hz"
+    
+    class UnitOfPower:
+        WATT = "W"
+    
+    class UnitOfTemperature:
+        CELSIUS = "°C"
+    
+    class UnitOfTime:
+        MINUTES = "min"
+        SECONDS = "s"
+    
+    # DateTime Utilities
+    class dt:
+        @staticmethod
+        def utcnow():
+            return datetime.now(timezone.utc)
+        
+        @staticmethod
+        def as_timestamp(dt_obj):
+            return dt_obj.timestamp()
+    
+    # Dummy-Klassen für Docker
+    class SensorEntity:
+        def __init__(self, *args, **kwargs):
+            self._attr_native_value = None
+            self._attr_native_unit_of_measurement = None
+            self._attr_device_class = None
+            self._attr_state_class = None
+            self._attr_entity_category = None
+            self._attr_icon = None
+            self._attr_suggested_unit_of_measurement = None
+            self._attr_suggested_display_precision = None
+            self._attr_force_update = False
+        
+        def _update_value(self, val: Any) -> bool:
+            self._attr_native_value = val
+            return True
+    
+    class BinarySensorEntity:
+        def __init__(self, *args, **kwargs):
+            self._attr_is_on = None
+        
+        def _update_value(self, val: Any) -> bool:
+            self._attr_is_on = bool(val)
+            return True
+    
+    # Dummy für nicht verfügbare Imports
+    ConfigEntry = None
+    HomeAssistant = None
+    AddEntitiesCallback = None
+
+# Docker-kompatible Konstanten-Imports
+try:
+    from . import (
+        ATTR_MQTT_CONNECTED,
+        ATTR_QUOTA_REQUESTS,
+        ATTR_STATUS_DATA_LAST_UPDATE,
+        ATTR_STATUS_PHASE,
+        ATTR_STATUS_RECONNECTS,
+        ATTR_STATUS_SN,
+        ECOFLOW_DOMAIN,
+    )
+except ImportError:
+    # Docker-kompatible Fallback-Konstanten
+    ATTR_MQTT_CONNECTED = "mqtt_connected"
+    ATTR_QUOTA_REQUESTS = "quota_requests"
+    ATTR_STATUS_DATA_LAST_UPDATE = "status_data_last_update"
+    ATTR_STATUS_PHASE = "status_phase"
+    ATTR_STATUS_RECONNECTS = "status_reconnects"
+    ATTR_STATUS_SN = "status_sn"
+    ECOFLOW_DOMAIN = "ecoflow_cloud"
+
 from .api import EcoflowApiClient
 from .devices import BaseDevice
-from .entities import (
-    BaseSensorEntity,
-    EcoFlowAbstractEntity,
-    EcoFlowDictEntity,
-)
+
+# Docker-kompatible Entity-Imports
+try:
+    from .entities import (
+        BaseSensorEntity,
+        EcoFlowAbstractEntity,
+        EcoFlowDictEntity,
+    )
+except ImportError:
+    # Docker-kompatible Fallback-Klassen
+    class BaseSensorEntity:
+        def __init__(self, client=None, device=None, key=None, title=None, enabled=True):
+            self.client = client
+            self.device = device
+            self.attr_key = key
+            self.title = title
+            self.enabled = enabled
+            self._attr_native_value = None
+            self._attr_native_unit_of_measurement = None
+            self._attr_device_class = None
+            self._attr_state_class = None
+            self._attr_entity_category = None
+            self._attr_icon = None
+            self._attr_suggested_unit_of_measurement = None
+            self._attr_suggested_display_precision = None
+            self._attr_force_update = False
+        
+        def _update_value(self, val: Any) -> bool:
+            self._attr_native_value = val
+            return True
+    
+    class EcoFlowAbstractEntity:
+        def __init__(self, client=None, device=None, title=None, key=None):
+            self.client = client
+            self.device = device
+            self.title = title
+            self.key = key
+            self.coordinator = None
+        
+        def schedule_update_ha_state(self):
+            pass
+    
+    class EcoFlowDictEntity(EcoFlowAbstractEntity):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.params = {}
+        
+        def _handle_coordinator_update(self):
+            pass
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    hass, entry, async_add_entities
 ):
-    client: EcoflowApiClient = hass.data[ECOFLOW_DOMAIN][entry.entry_id]
+    """Setup entry - nur verfügbar wenn Home Assistant vorhanden ist"""
+    if not HOMEASSISTANT_AVAILABLE:
+        _LOGGER.warning("async_setup_entry called but Home Assistant not available")
+        return
+    
+    client = hass.data[ECOFLOW_DOMAIN][entry.entry_id]
     for sn, device in client.devices.items():
         async_add_entities(device.sensors(client))
 
@@ -582,3 +753,97 @@ class ReconnectStatusSensorEntity(StatusSensorEntity):
             return True
         else:
             return super()._actualize_status()
+
+
+# Docker-kompatible Parameter-Extraktions-Funktionen
+def extract_sensor_parameters_from_device_class(device_class) -> set:
+    """
+    Extrahiert alle Parameter-Namen aus einer Device-Klasse durch Analyse der sensors() Methode
+    """
+    defined_params = set()
+    
+    try:
+        if hasattr(device_class, 'sensors') and callable(device_class.sensors):
+            # Erstelle eine Dummy-Instanz um die sensors() Methode zu analysieren
+            import inspect
+            
+            # Hole die Sensor-Definitionen aus dem Quellcode der sensors() Methode
+            source = inspect.getsource(device_class.sensors)
+            
+            # Regex um Parameter-Namen zu extrahieren (dritter Parameter bei Sensor-Konstruktoren)
+            import re
+            
+            # Suche nach Sensor-Entity Konstruktoren mit 3+ Parametern
+            # Pattern für: SensorEntity(client, self, "parameter_name", ...)
+            patterns = [
+                r'(\w+SensorEntity)\(client,\s*self,\s*["\']([^"\']+)["\']',  # Quoted parameter
+                r'(\w+SensorEntity)\(client,\s*self,\s*([a-zA-Z_][a-zA-Z0-9_]*)',  # Variable parameter
+                # Pattern für Kommentare mit Parameter-Namen: # "parameterName": value,
+                r'#\s*["\']([^"\']+)["\']\s*:',  # Parameter in Kommentaren
+            ]
+            
+            for pattern in patterns:
+                matches = re.findall(pattern, source)
+                for match in matches:
+                    if len(match) == 2:  # Sensor Entity Pattern
+                        sensor_type, param_name = match
+                    else:  # Comment Pattern
+                        param_name = match
+                        
+                    # Entferne Anführungszeichen falls vorhanden und bereinige
+                    param_name = param_name.strip('"\'')
+                    
+                    # Ignoriere const.* Referenzen und andere spezielle Fälle
+                    if (param_name and 
+                        not param_name.startswith('const.') and
+                        not param_name.startswith('_') and
+                        param_name.isidentifier() and
+                        len(param_name) > 2):
+                        defined_params.add(param_name)
+                        # Debug-Log nur wenn DEBUG-Level aktiv ist (weniger Spam)
+                        if _LOGGER.isEnabledFor(logging.DEBUG):
+                            _LOGGER.debug(f"Found parameter: {param_name}")
+        
+        # Info-Log nur einmal pro Device-Klasse mit Cache
+        if not hasattr(extract_sensor_parameters_from_device_class, '_logged_classes'):
+            extract_sensor_parameters_from_device_class._logged_classes = set()
+        
+        class_name = device_class.__name__ if hasattr(device_class, '__name__') else str(device_class)
+        if class_name not in extract_sensor_parameters_from_device_class._logged_classes:
+            _LOGGER.info(f"Extracted {len(defined_params)} parameters from device class {class_name}")
+            extract_sensor_parameters_from_device_class._logged_classes.add(class_name)
+        else:
+            _LOGGER.debug(f"Re-extracted {len(defined_params)} parameters from device class {class_name} (cached)")
+        
+        return defined_params
+        
+    except Exception as e:
+        _LOGGER.debug(f"Failed to extract parameters from device class: {e}")
+        return set()
+
+
+def extract_parameters_from_source_comments(source_code: str) -> set:
+    """
+    Extrahiert Parameter-Namen aus Kommentaren im Quellcode
+    Erkennt Patterns wie: # "parameterName": value,
+    """
+    import re
+    
+    defined_params = set()
+    
+    # Pattern für JSON-ähnliche Kommentare
+    comment_patterns = [
+        r'#\s*["\']([a-zA-Z][a-zA-Z0-9_]*)["\']:\s*[^,\n]+',  # "param": value
+        r'#\s*([a-zA-Z][a-zA-Z0-9_]*)\s*:\s*[^,\n]+',         # param: value  
+    ]
+    
+    for pattern in comment_patterns:
+        matches = re.findall(pattern, source_code)
+        for param_name in matches:
+            if (param_name and 
+                param_name.isidentifier() and 
+                len(param_name) > 2 and
+                not param_name.startswith('_')):
+                defined_params.add(param_name)
+    
+    return defined_params

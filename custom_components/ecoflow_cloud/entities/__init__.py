@@ -19,13 +19,29 @@ class Entity:
 class SensorEntity(Entity):
     pass
 
+class BaseSensorEntity(SensorEntity):
+    """Basis Sensor Entity für Device-Klassen"""
+    pass
+
 class NumberEntity(Entity):
+    pass
+
+class BaseNumberEntity(NumberEntity):
+    """Basis Number Entity für Device-Klassen"""
     pass
 
 class SwitchEntity(Entity):
     pass
 
+class BaseSwitchEntity(SwitchEntity):
+    """Basis Switch Entity für Device-Klassen"""
+    pass
+
 class SelectEntity(Entity):
+    pass
+
+class BaseSelectEntity(SelectEntity):
+    """Basis Select Entity für Device-Klassen"""
     pass
 
 class ButtonEntity(Entity):
