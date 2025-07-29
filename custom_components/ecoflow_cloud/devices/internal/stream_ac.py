@@ -36,6 +36,13 @@ class StreamAC(BaseDevice):
                 if parsed_data:
                     raw["params"].update(parsed_data)
                     _LOGGER.info("Successfully parsed %d Stream parameters", len(parsed_data))
+                    
+                    # Debug: Liste alle geparsten Parameter auf
+                    for key, value in parsed_data.items():
+                        _LOGGER.debug(f"📊 Stream parameter: {key} = {value}")
+                        # Spezielle Behandlung für enc_type
+                        if key == "enc_type":
+                            _LOGGER.warning(f"🚨 Found enc_type in Stream parameters: {value} (this should be a header field!)")
                 else:
                     _LOGGER.debug("No Stream parameters extracted")
             
@@ -80,7 +87,11 @@ class StreamAC(BaseDevice):
                     # Prüfe ob Inhalt vorhanden ist
                     content_str = str(content)
                     if len(content_str) > 0 and content_str.strip():
-                        _LOGGER.debug("Successfully parsed %s", stream_name)
+                        _LOGGER.info(f"✅ Successfully parsed {stream_name} - Content length: {len(content_str)}")
+                        
+                        # Debug: Zeige verfügbare Felder
+                        available_fields = [f.name for f in content.DESCRIPTOR.fields if content.HasField(f.name)]
+                        _LOGGER.info(f"📋 Available fields in {stream_name}: {available_fields}")
                         
                         # Extrahiere Felder mit gleicher Logik wie original
                         for descriptor in content.DESCRIPTOR.fields:
@@ -90,6 +101,36 @@ class StreamAC(BaseDevice):
                                 
                                 value = getattr(content, descriptor.name)
                                 field_name = descriptor.name
+                                
+                                # ❌ WICHTIG: Header-Felder herausfiltern!
+                                # Diese Felder gehören zum Protobuf-Header, nicht zu den Gerätedaten
+                                header_fields = {
+                                    "src", "dest", "d_src", "d_dest", "check_type", 
+                                    "cmd_func", "cmd_id", "data_len", "need_ack", "is_ack", 
+                                    "seq", "product_id", "version", "payload_ver", "time_snap", 
+                                    "is_rw_cmd", "is_queue", "ack_type", "code", "from", 
+                                    "module_sn", "device_sn", "pdata"
+                                    # HINWEIS: enc_type NICHT hier - es könnte Battery SOC sein!
+                                }
+                                
+                                if field_name in header_fields:
+                                    _LOGGER.info(f"🚫 Filtering header field: {field_name} = {value}")
+                                    continue
+                                
+                                # ✅ Alle anderen Felder protokollieren
+                                _LOGGER.info(f"✅ Processing field: {field_name} = {value}")
+                                
+                                # 🔋 SPEZIELLE BEHANDLUNG für enc_type als Battery SOC
+                                if field_name == "enc_type":
+                                    # enc_type scheint der echte Battery SOC zu sein (0-100%)
+                                    if 0 <= value <= 100:
+                                        result["battery_soc"] = value
+                                        result["battery_percentage"] = value
+                                        result["enc_type_raw"] = value
+                                        _LOGGER.info(f"🔋 Battery SOC from enc_type: {value}%")
+                                    else:
+                                        _LOGGER.warning(f"⚠️ enc_type out of range for SOC: {value}")
+                                        result["enc_type_unknown"] = value
                                 
                                 # Stream AC Parameter-Verarbeitung
                                 if field_name == "f32ShowSoc":
@@ -101,6 +142,11 @@ class StreamAC(BaseDevice):
                                 elif field_name == "soc":
                                     result["soc"] = value
                                     result["battery_percentage"] = value
+                                elif field_name == "Champ_cmd21_3_field460":
+                                    # Dieser Wert ist NICHT der Battery SOC - das war ein Irrtum
+                                    result["field460_raw"] = value
+                                    result["field460_converted"] = round(value / 100.0, 2)
+                                    _LOGGER.info(f"� Field460 (not SOC): {value} raw -> {round(value / 100.0, 2)}")
                                 elif field_name in ["bmsChgRemTime", "bmsDsgRemTime"]:
                                     result[field_name] = value
                                     if field_name == "bmsChgRemTime":
@@ -116,6 +162,7 @@ class StreamAC(BaseDevice):
                                     result[field_name] = round(value, 2)
                                 elif field_name in ["powGetPvSum", "powGetBpCms", "powGetSysGrid"]:
                                     result[field_name] = round(value, 2)
+                                    _LOGGER.info(f"⚡ Power parameter: {field_name} = {value}W")
                                 elif field_name in ["maxCellTemp", "minCellTemp", "temp"]:
                                     result[field_name] = value
                                 elif field_name in ["maxCellVol", "minCellVol", "vol"]:

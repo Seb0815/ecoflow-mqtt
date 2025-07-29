@@ -337,16 +337,32 @@ class PowerStream(PrivateAPIProtoDeviceMixin, BaseDevice):
                     continue
 
                 params = cast(JSONDict, res.setdefault("params", {}))
+                
+                # Header-Felder separat behandeln (nicht als Parameter publizieren)
+                header_fields = {
+                    "src", "dest", "d_src", "d_dest", "enc_type", "check_type", 
+                    "cmd_func", "cmd_id", "data_len", "need_ack", "is_ack", 
+                    "seq", "product_id", "version", "payload_ver", "time_snap", 
+                    "is_rw_cmd", "is_queue", "ack_type", "code", "from", 
+                    "module_sn", "device_sn", "pdata"
+                }
+                
+                # Debug: Log Header-Felder separat
+                if message.HasField("enc_type"):
+                    _LOGGER.debug(f"📦 Header enc_type: {message.enc_type} (not added to params)")
+                
                 if command in {Command.PRIVATE_API_POWERSTREAM_HEARTBEAT}:
                     payload = get_expected_payload_type(command)()
                     _ = payload.ParseFromString(message.pdata)
-                    params.update(
-                        (f"{command.func}_{command.id}.{key}", value)
-                        for key, value in cast(
-                            JSONDict,
-                            MessageToDict(payload, preserving_proto_field_name=False),
-                        ).items()
-                    )
+                    
+                    # Nur Payload-Daten zu Parametern hinzufügen, keine Header-Felder
+                    payload_dict = MessageToDict(payload, preserving_proto_field_name=False)
+                    for key, value in payload_dict.items():
+                        if key not in header_fields:  # Header-Felder ausschließen
+                            params[f"{command.func}_{command.id}.{key}"] = value
+                        else:
+                            _LOGGER.debug(f"🚫 Skipping header field: {key} = {value}")
+                            
                 elif command in {Command.PRIVATE_API_PLATFORM_WATTH}:
                     payload = platform.BatchEnergyTotalReport()
                     _ = payload.ParseFromString(message.pdata)

@@ -1,7 +1,18 @@
 from typing import Type, OrderedDict
+import logging
 
-# Verwende nur die Basis-Klassen ohne spezifische Device-Implementierungen
+# Verwende sowohl Basis-Klassen als auch spezifische Device-Implementierungen
 from ..devices import BaseDevice, DiagnosticDevice
+
+_LOGGER = logging.getLogger(__name__)
+
+# Import der spezifischen Device-Klassen für korrekte Dateninterpretation
+try:
+    from .internal.stream_ac import StreamAC
+    _LOGGER.info("✅ StreamAC class imported successfully")
+except ImportError as e:
+    _LOGGER.warning(f"⚠️ Could not import StreamAC: {e}")
+    StreamAC = DiagnosticDevice
 
 # Fallback-Dictionary für unterstützte Geräte
 # Da wir nur MQTT Publishing brauchen, verwenden wir DiagnosticDevice für alle Typen
@@ -39,11 +50,11 @@ devices: OrderedDict[str, Type[BaseDevice]] = OrderedDict[str, Type[BaseDevice]]
         "SMART_PLUG": DiagnosticDevice,
         "SMART_HOME_PANEL_2": DiagnosticDevice,
         
-        # Stream-Serie
-        "STREAM_AC": DiagnosticDevice,
+        # Stream-Serie - Verwende spezifische StreamAC-Klasse!
+        "STREAM_AC": StreamAC,
+        "STREAM_ULTRA": StreamAC,  # Stream Ultra verwendet StreamAC-Parsing
+        "STREAM_PRO": StreamAC,
         "STREAM_MICROINVERTER": DiagnosticDevice,
-        "STREAM_ULTRA": DiagnosticDevice,
-        "STREAM_PRO": DiagnosticDevice,
         
         # Power Kits
         "POWER_KITS": DiagnosticDevice,
@@ -70,9 +81,9 @@ device_by_product: OrderedDict[str, Type[BaseDevice]] = OrderedDict[str, Type[Ba
         "Delta Pro 3": DiagnosticDevice,
         "Power Kits": DiagnosticDevice,
         "Smart Meter": DiagnosticDevice,
-        "Stream AC": DiagnosticDevice,
-        "Stream PRO": DiagnosticDevice,
-        "Stream Ultra": DiagnosticDevice,
+        "Stream AC": StreamAC,
+        "Stream PRO": StreamAC,
+        "Stream Ultra": StreamAC,  # Stream Ultra verwendet StreamAC-Parsing
         "Stream Microinverter": DiagnosticDevice,
         "Smart Home Panel 2": DiagnosticDevice,
         "DIAGNOSTIC": DiagnosticDevice,
