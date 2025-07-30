@@ -14,7 +14,7 @@ import sys
 import time
 import traceback
 import datetime
-from typing import Dict
+from typing import Dict  # Kept for compatibility
 
 import paho.mqtt.client as mqtt
 
@@ -83,8 +83,9 @@ class EcoflowMqttPublisher:
         # Device-Instanzen erstellen basierend auf den Seriennummern
         await self.setup_device_instances()
         
-        # MQTT Client starten
-        await asyncio.get_event_loop().run_in_executor(None, self.api_client.start)
+        # MQTT Client starten (Python 3.13 kompatibel)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self.api_client.start)
         _LOGGER.info("EcoFlow MQTT Client started")
 
     async def setup_device_instances(self):

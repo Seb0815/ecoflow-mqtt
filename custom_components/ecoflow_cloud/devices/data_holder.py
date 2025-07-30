@@ -13,7 +13,13 @@ _T = TypeVar("_T")
 class dt:
     @staticmethod
     def utcnow():
-        return datetime.utcnow()
+        # Python 3.13 compatible: use timezone.utc instead of deprecated utcnow()
+        try:
+            from datetime import timezone
+            return datetime.now(timezone.utc).replace(tzinfo=None)  # Keep old behavior
+        except ImportError:
+            # Fallback for older Python versions
+            return datetime.utcnow()
     
     @staticmethod
     def now():

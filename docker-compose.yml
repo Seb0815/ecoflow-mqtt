@@ -1,28 +1,37 @@
-version: '3'
+version: '3.8'
+
 services:
   ecoflow-mqtt:
     build: 
         context: .
         dockerfile: Dockerfile
-    container_name: ecoflow-mqtt-publisher
+    image: ecoflow-mqtt-debug
+    container_name: ecoflow-mqtt-bridge
     restart: unless-stopped
+    env_file: .env
     environment:
-      # EcoFlow API Konfiguration
-      ECOFLOW_AUTH_TYPE: "${ECOFLOW_AUTH_TYPE:-private}"
-      ECOFLOW_USERNAME: "${ECOFLOW_USERNAME}"
-      ECOFLOW_PASSWORD: "${ECOFLOW_PASSWORD}"
-      ECOFLOW_ACCESS_KEY: "${ECOFLOW_ACCESS_KEY}"
-      ECOFLOW_SECRET_KEY: "${ECOFLOW_SECRET_KEY}"
-      ECOFLOW_API_HOST: "${ECOFLOW_API_HOST:-api.ecoflow.com}"
-      ECOFLOW_GROUP: "${ECOFLOW_GROUP:-default}"
-      ECOFLOW_DEVICES: "${ECOFLOW_DEVICES}"
-      
-      # MQTT Konfiguration  
-      MQTT_HOST: "${MQTT_HOST:-mqtt}"
-      MQTT_PORT: "${MQTT_PORT:-1883}"
-      MQTT_USERNAME: "${MQTT_USERNAME}"
-      MQTT_PASSWORD: "${MQTT_PASSWORD}"
-      MQTT_BASE_TOPIC: "${MQTT_BASE_TOPIC:-ecoflow}"
+      # Python Output buffering für bessere Logs
+      - PYTHONUNBUFFERED=1
+    command: >
+      --username=${ECOFLOW_USERNAME}
+      --password=${ECOFLOW_PASSWORD}
+      --device-sn=${DEVICE_SN}
+      --mqtt-host=${MQTT_HOST}
+      --mqtt-port=${MQTT_PORT}
+      --mqtt-username=${MQTT_USERNAME}
+      --mqtt-password=${MQTT_PASSWORD}
+    networks:
+      - ecoflow
+    # Log-Rotation für bessere Performance
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  ecoflow:
+    driver: bridge
 
 
 

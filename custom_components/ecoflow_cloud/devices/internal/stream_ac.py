@@ -192,12 +192,14 @@ class StreamAC(BaseDevice):
             WattsSensorEntity(client, self, "pv_power_string_3", const.STREAM_POWER_PV_3, False, True),
             WattsSensorEntity(client, self, "pv_power_string_4", const.STREAM_POWER_PV_4, False, True),
             
-            # PV Candidates - BESTÄTIGTE Kandidaten aus Debug-Logs (alle ~9-11W)
+            # PV Candidates - BESTÄTIGTE Kandidaten aus aktuellen Debug-Logs (alle ~9-10W)
             WattsSensorEntity(client, self, "pv1_candidate_42", const.STREAM_POWER_PV_1, False, True),      # CMD 50 Field 42 = 10.0W - BESTÄTIGT!
-            WattsSensorEntity(client, self, "pv2_candidate_44", const.STREAM_POWER_PV_2, False, True),      # CMD 50 Field 44 ~11W - BESTÄTIGT!
+            WattsSensorEntity(client, self, "pv2_candidate_44", const.STREAM_POWER_PV_2, False, True),      # CMD 50 Field 44 = 9.6W - BESTÄTIGT!
             WattsSensorEntity(client, self, "pv3_candidate_6", const.STREAM_POWER_PV_3, False, True),       # CMD 50 Field 6 = 9W - BESTÄTIGT!
             WattsSensorEntity(client, self, "pv4_candidate_14", const.STREAM_POWER_PV_4, False, True),      # CMD 50 Field 14 = 9W - BESTÄTIGT!
-            WattsSensorEntity(client, self, "pv_candidate_1424", const.STREAM_POWER_PV_1, False, True),     # CMD 22 Field 1424 = 11W - BESTÄTIGT!
+            
+            # Zusätzliche PV Kandidaten aus CMD 22
+            WattsSensorEntity(client, self, "pv_power_string_1", const.STREAM_POWER_PV_1, False, True),     # CMD 22 Field 1409 = 9W - BESTÄTIGT!
             
             # "powGetSchuko1": 0.0,
             WattsSensorEntity(client, self, "powGetSchuko1", const.STREAM_GET_SCHUKO1, False, True),
@@ -620,24 +622,84 @@ class StreamAC(BaseDevice):
             for suggestion in suggestions:
                 _LOGGER.info(f"  {suggestion}")
         
-        # 4. PV-Kandidaten-Suche: Suche nach Werten für PV1-PV4 (alle 10-12W)
-        _LOGGER.info("=== PV CANDIDATE SEARCH (PV1-PV4 all at 10-12W) ===")
-        pv_candidates_found = 0
+        # 4. PV-Kandidaten-Suche: Intelligente Analyse aller verfügbaren Felder
+        _LOGGER.info("=== SMART PV CANDIDATE ANALYSIS ===")
+        _LOGGER.info("Analyzing all fields for PV patterns (0-800W range, 4 strings expected)")
+        
+        # Sammle alle numerischen Werte im PV-Bereich
+        pv_candidates = []
+        all_numeric_fields = []
+        
         for field_info in protobuf_fields:
             field_num = field_info['field_number']
             value = field_info['value']
             
-            # Prüfe auf numerische Werte im PV-Bereich (erweitert auf 8-15W)
             if isinstance(value, (int, float)):
-                # PV1-PV4 Bereich: 8-15W (alle aktuell 10-12W)
-                if 8 <= value <= 15:
-                    pv_candidates_found += 1
-                    _LOGGER.info(f"🔍 PV CANDIDATE: Field {field_num} = {value}W (matches PV1-PV4 range 10-12W)")
+                all_numeric_fields.append((field_num, value))
                 
-        if pv_candidates_found == 0:
-            _LOGGER.info("🔍 No PV candidates found in expected range (8-15W)")
+                # PV-Bereich: 0-800W (realistisch für Stream Ultra)
+                if 0 <= value <= 800:
+                    pv_candidates.append({
+                        'field': field_num,
+                        'value': value,
+                        'cmd_id': cmd_id
+                    })
+        
+        # Zeige ALLE numerischen Felder (zur Übersicht)
+        _LOGGER.info(f"=== ALL NUMERIC FIELDS (CMD {cmd_id}) ===")
+        for field_num, value in sorted(all_numeric_fields)[:20]:  # Top 20
+            if isinstance(value, float) and abs(value) > 1000:
+                _LOGGER.info(f"Field {field_num} = {value:.1f}")
+            else:
+                _LOGGER.info(f"Field {field_num} = {value}")
+        
+        if len(all_numeric_fields) > 20:
+            _LOGGER.info(f"... and {len(all_numeric_fields)-20} more numeric fields")
+        
+        # Analysiere PV-Kandidaten
+        if pv_candidates:
+            _LOGGER.info(f"=== PV CANDIDATES (0-800W range) ===")
+            sorted_candidates = sorted(pv_candidates, key=lambda x: x['value'], reverse=True)
+            
+            for i, candidate in enumerate(sorted_candidates):
+                field_num = candidate['field']
+                value = candidate['value']
+                marker = "🟢" if value > 50 else "🟡" if value > 10 else "⚪"
+                _LOGGER.info(f"{marker} PV Candidate #{i+1}: Field {field_num} = {value}W")
+                
+                # Spezielle Markierung für bereits konfigurierte Felder
+                if field_num in [6, 14, 15, 20, 42, 44, 52, 53, 54, 1363, 1364, 1366]:
+                    _LOGGER.info(f"   ⭐ This field is already configured in device class!")
+            
+            # Suche nach logischen Gruppierungen
+            _LOGGER.info("=== PV PATTERN ANALYSIS ===")
+            high_power_fields = [c for c in sorted_candidates if c['value'] > 100]
+            medium_power_fields = [c for c in sorted_candidates if 20 <= c['value'] <= 100]
+            low_power_fields = [c for c in sorted_candidates if 0 < c['value'] < 20]
+            
+            _LOGGER.info(f"High Power (>100W): {len(high_power_fields)} fields")
+            _LOGGER.info(f"Medium Power (20-100W): {len(medium_power_fields)} fields") 
+            _LOGGER.info(f"Low Power (0-20W): {len(low_power_fields)} fields")
+            
+            # Top 4 Kandidaten für PV1-PV4 vorschlagen
+            top_4 = sorted_candidates[:4]
+            if len(top_4) >= 4:
+                _LOGGER.info("=== SUGGESTED PV1-PV4 MAPPING ===")
+                for i, candidate in enumerate(top_4):
+                    pv_name = f"PV{i+1}"
+                    field_num = candidate['field']
+                    value = candidate['value']
+                    _LOGGER.info(f"🎯 {pv_name} = Field {field_num} = {value}W")
+            
         else:
-            _LOGGER.info(f"🔍 Found {pv_candidates_found} PV candidates in expected range (8-15W)")
+            _LOGGER.info("🔍 No PV candidates found in expected range (0-800W)")
+            _LOGGER.info("This might indicate that PV values are in a different message or encoded differently")
+            
+        _LOGGER.info("=== END SMART PV ANALYSIS ===")
+        
+        # Store candidates for potential auto-configuration
+        if pv_candidates:
+            decoded_params["_pv_candidates"] = sorted_candidates[:10]  # Top 10
             
         _LOGGER.info("=== END PROTOBUF DEBUG ANALYSIS ===")
 
