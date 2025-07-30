@@ -662,7 +662,7 @@ class StreamAC(BaseDevice):
                 _LOGGER.debug(f"UNKNOWN Field {field_num} ({wire_type_name}): {value_str}")
         
         else:
-            _LOGGER.info("✅ All fields are already configured in stream_ac.py")
+            _LOGGER.info("All fields are already configured in stream_ac.py")
         
         # Statistik
         total_fields = len(protobuf_fields)
