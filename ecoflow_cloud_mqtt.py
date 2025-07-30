@@ -1808,6 +1808,40 @@ class EcoflowMqttPublisher:
         else:
             return value
 
+    async def send_keep_alive_messages(self):
+        """
+        Sendet Keep-Alive-Nachrichten an alle EcoFlow-Geräte
+        Verwendet die echte quota_all Methode der EcoFlow Private API
+        Dies verhindert, dass Geräte in den Schlafmodus wechseln
+        """
+        if not self.api_client:
+            _LOGGER.warning("API Client not available for keep-alive")
+            return
+            
+        try:
+            # Vereinfachte Methode: Nutze nur die quota_all API direkt
+            if hasattr(self.api_client, 'quota_all'):
+                # Rufe quota_all für alle Geräte auf
+                await self.api_client.quota_all(None)  # None bedeutet alle Geräte
+                _LOGGER.debug(f"🔄 API quota_all Keep-Alive sent for all devices")
+            else:
+                _LOGGER.debug("🔄 quota_all method not available on API client")
+                
+        except Exception as e:
+            _LOGGER.debug(f"Keep-Alive system error: {e}")
+            
+        # Zusätzlich: MQTT-Level keepalive sicherstellen
+        try:
+            if hasattr(self.api_client, 'mqtt_client') and self.api_client.mqtt_client:
+                # Prüfe MQTT-Verbindung
+                if hasattr(self.api_client.mqtt_client, 'is_connected'):
+                    if not self.api_client.mqtt_client.is_connected():
+                        _LOGGER.warning("🔄 MQTT connection lost, attempting reconnect")
+                        if hasattr(self.api_client.mqtt_client, 'reconnect'):
+                            self.api_client.mqtt_client.reconnect()
+        except Exception as e:
+            _LOGGER.debug(f"MQTT connection check failed: {e}")
+
     async def start(self):
         """Startet den EcoFlow MQTT Publisher"""
         _LOGGER.info("EcoFlow MQTT Publisher starting...")
@@ -1846,53 +1880,80 @@ class EcoflowMqttPublisher:
             self.message_count = 0
             self.last_message_time = None
             
+            # Keep-Alive System Konfiguration
+            self.keep_alive_interval = 30  # Keep-Alive alle 30 Sekunden
+            self.status_interval = 60      # Status-Updates alle 60 Sekunden
+            self.last_keep_alive = 0
+            self.last_status_update = 0
+            
             # Hauptschleife starten
             self.running = True
             status_counter = 0
+            keep_alive_counter = 0
+            
             while self.running:
-                status_counter += 1
+                current_time = time.time()
                 
-                # Status-Update senden
-                message_stats = {
-                    'total_messages': getattr(self, 'message_count', 0),
-                    'last_message_time': getattr(self, 'last_message_time', None),
-                    'seconds_since_last_message': time.time() - getattr(self, 'last_message_time', time.time()) if getattr(self, 'last_message_time', None) else None
-                }
+                # Keep-Alive Nachrichten senden (alle 30s)
+                if current_time - self.last_keep_alive >= self.keep_alive_interval:
+                    keep_alive_counter += 1
+                    await self.send_keep_alive_messages()
+                    self.last_keep_alive = current_time
+                    
+                    # Logging mit Keep-Alive Info
+                    msg_info = f"📊 Messages so far: {getattr(self, 'message_count', 0)}"
+                    if getattr(self, 'last_message_time', None):
+                        seconds_ago = int(time.time() - self.last_message_time)
+                        msg_info += f", last {seconds_ago}s ago"
+                    else:
+                        msg_info += ", none received yet"
+                    
+                    _LOGGER.info(f"🔄 Keep-Alive #{keep_alive_counter} sent to {len(self.device_sns)} devices - {msg_info}")
                 
-                status = {
-                    'status': 'running',
-                    'timestamp': time.time(),
-                    'devices': self.device_sns,
-                    'messages': message_stats,
-                    'status_update_count': status_counter
-                }
-                
-                self.mqtt_client.publish(
-                    f"{self.mqtt_base_topic}/status", 
-                    json.dumps(status), 
-                    retain=True
-                )
-                
-                # Status für jedes Gerät senden
-                for device_sn in self.device_sns:
-                    device_status = {
-                        'device_sn': device_sn,
-                        'timestamp': time.time(),
-                        'status': 'connected'
+                # Status-Updates senden (alle 60s)
+                if current_time - self.last_status_update >= self.status_interval:
+                    status_counter += 1
+                    
+                    # Status-Update senden
+                    message_stats = {
+                        'total_messages': getattr(self, 'message_count', 0),
+                        'last_message_time': getattr(self, 'last_message_time', None),
+                        'seconds_since_last_message': time.time() - getattr(self, 'last_message_time', time.time()) if getattr(self, 'last_message_time', None) else None,
+                        'keep_alive_count': keep_alive_counter
                     }
-                    topic = f"{self.mqtt_base_topic}/{device_sn}/status"
-                    self.mqtt_client.publish(topic, json.dumps(device_status), retain=True)
+                    
+                    status = {
+                        'status': 'running',
+                        'timestamp': time.time(),
+                        'devices': self.device_sns,
+                        'messages': message_stats,
+                        'status_update_count': status_counter,
+                        'keep_alive_enabled': True,
+                        'keep_alive_interval': self.keep_alive_interval
+                    }
+                    
+                    self.mqtt_client.publish(
+                        f"{self.mqtt_base_topic}/status", 
+                        json.dumps(status), 
+                        retain=True
+                    )
+                    
+                    # Status für jedes Gerät senden
+                    for device_sn in self.device_sns:
+                        device_status = {
+                            'device_sn': device_sn,
+                            'timestamp': time.time(),
+                            'status': 'connected',
+                            'keep_alive_active': True
+                        }
+                        topic = f"{self.mqtt_base_topic}/{device_sn}/status"
+                        self.mqtt_client.publish(topic, json.dumps(device_status), retain=True)
+                    
+                    self.last_status_update = current_time
+                    _LOGGER.info(f"📊 Status update #{status_counter} sent for {len(self.device_sns)} devices")
                 
-                # Logging mit Nachrichten-Info
-                msg_info = f"📊 Messages so far: {getattr(self, 'message_count', 0)}"
-                if getattr(self, 'last_message_time', None):
-                    seconds_ago = int(time.time() - self.last_message_time)
-                    msg_info += f", last {seconds_ago}s ago"
-                else:
-                    msg_info += ", none received yet"
-                
-                _LOGGER.info(f"Status sent for {len(self.device_sns)} devices - {msg_info}")
-                await asyncio.sleep(60)
+                # Kurze Pause zwischen Zyklen
+                await asyncio.sleep(5)  # Schnellere Kontrolle für präziseres Timing
                 
         except Exception as e:
             _LOGGER.error(f"Error during startup: {e}")

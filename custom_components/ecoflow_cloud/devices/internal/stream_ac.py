@@ -243,9 +243,15 @@ class StreamAC(BaseDevice):
             LevelSensorEntity(client, self, "cmsBattSoc", const.STREAM_POWER_BATTERY_SOC, False),         # Field 104 - CMS SOC
             LevelSensorEntity(client, self, "targetSoc", const.STREAM_POWER_BATTERY_SOC, False),          # Field 105 - Target SOC
             LevelSensorEntity(client, self, "diffSoc", const.STREAM_POWER_BATTERY_SOC, False),            # Field 106 - SOC Difference
-            LevelSensorEntity(client, self, "Champ_cmd21_3_field460", const.STREAM_POWER_BATTERY_SOC, False), # Field 460 - Potentieller SOC
-            
-             
+    
+            LevelSensorEntity(client, self, "Champ_cmd21_3_field460", const.STREAM_POWER_BATTERY_SOC, False), 
+            LevelSensorEntity(client, self, "Champ_cmd21_3_field254", const.STREAM_POWER_BATTERY_SOC, False), 
+            LevelSensorEntity(client, self, "Champ_cmd21_3_field268", const.STREAM_POWER_BATTERY_SOC, False), 
+            LevelSensorEntity(client, self, "Champ_cmd21_3_field602", const.STREAM_POWER_BATTERY_SOC, False), 
+            LevelSensorEntity(client, self, "Champ_cmd21_3_field998", const.STREAM_POWER_BATTERY_SOC, False), 
+            LevelSensorEntity(client, self, "Champ_cmd21_3_field282", const.STREAM_POWER_BATTERY_SOC, False), 
+            LevelSensorEntity(client, self, "Champ_cmd21_3_field1002", const.STREAM_POWER_BATTERY_SOC, False), 
+ 
             # "socketMeasurePower": 0.0,
             # "soh": 100,
             LevelSensorEntity(client, self, "soh", const.SOH, False),
@@ -423,25 +429,35 @@ class StreamAC(BaseDevice):
             _LOGGER.debug("raw_data : \"%s\"  raw_data.hex() : \"%s\"",str(raw_data),str(raw_data.hex()))
         
        
-        # Filter: Entferne field_xxxx Parameter von der MQTT-Übertragung (bleiben im Log)
+        # Filter: Entferne nur echte debug field_xxxx Parameter von der MQTT-Übertragung (bleiben im Log)
         filtered_params = {}
         field_params_count = 0
         
         for key, value in raw["params"].items():
-            # Entferne alle field_xxx und Champ_cmd50_3_fieldX Parameter von MQTT
-            if (key.startswith("field_") or 
-                key.startswith("Champ_cmd50_3_field") or
-                key.startswith("Champ_cmd21_3_field") and key != "Champ_cmd21_3_field460" and key != "Champ_cmd21_3_field602"):
+            # Nur reine field_xxx ohne Präfix entfernen (HeaderStream debug fields)
+            # BEHALTE alle wichtigen Parameter mit Namen!
+            should_filter = (
+                # Filtere nur reine field_xxx (wie field_1066, field_1067)
+                (key.startswith("field_") and key.count("_") == 1 and key[6:].isdigit()) or
+                # Filtere Champ_cmd_fieldX nur wenn sie nicht in der Whitelist stehen
+                (key.startswith("Champ_cmd") and "_field" in key and key not in [
+                    "Champ_cmd21_3_field460", "Champ_cmd21_3_field602", "Champ_cmd21_3_field254",
+                    "Champ_cmd21_3_field268", "Champ_cmd21_3_field282", "Champ_cmd21_3_field1002",
+                    "Champ_cmd21_3_field998"
+                ])
+            )
+            
+            if should_filter:
                 field_params_count += 1
-                
-               
                 continue
             
-            # Behalte wichtige, benannte Parameter für MQTT
+            # Behalte ALLE anderen Parameter für MQTT (benannte Parameter, Power-Werte, etc.)
             filtered_params[key] = value
         
         if field_params_count > 0:
             _LOGGER.debug(f"Filtered {field_params_count} debug-only field_xxx parameters from MQTT (kept in logs)")
+        
+        _LOGGER.debug(f"Kept {len(filtered_params)} parameters for MQTT transmission")
         
         raw["params"] = filtered_params
         return raw

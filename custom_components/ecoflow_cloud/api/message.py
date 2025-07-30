@@ -50,3 +50,9 @@ class JSONMessage(Message):
     @override
     def to_mqtt_payload(self) -> PayloadType:
         return json.dumps(JSONMessage.prepare_payload(self.data))
+
+
+class EmptyMessage(JSONMessage):
+    """Empty message for quota and keep-alive requests"""
+    def __init__(self) -> None:
+        super().__init__({})

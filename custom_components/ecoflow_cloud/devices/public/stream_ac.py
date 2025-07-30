@@ -168,32 +168,6 @@ class StreamAC(BaseDevice):
             # "powGetPv4": 0.0,
             WattsSensorEntity(client, self, "powGetPv4", const.STREAM_POWER_PV_4, False, True),
             
-            # ===== CMD 21 PV-Felder (präzise Einzelwerte) =====
-            # Basierend auf aktueller Log-Analyse - BESTÄTIGTE Kandidaten
-            WattsSensorEntity(client, self, "pv1_cmd21_precise", "PV1 CMD21 (Field 516)", False, True),  # Field 516: 402-404W - BESTÄTIGT!
-            WattsSensorEntity(client, self, "pv2_cmd21_precise", "PV2 CMD21 (Field 361)", False, True),  # Field 361: 389-390W - NEU ENTDECKT!
-            WattsSensorEntity(client, self, "pv3_cmd21_precise", "PV3 CMD21 (Field 997)", False, True),  # Field 997: 197W - BESTÄTIGT!
-            WattsSensorEntity(client, self, "pv4_cmd21_precise", "PV4 CMD21 (Field 616)", False, True),  # Field 616: 165W - BESTÄTIGT!
-            # Neue entdeckte Felder aus aktueller Log-Analyse
-            WattsSensorEntity(client, self, "pv_cmd21_field_613", "PV CMD21 (Field 613)", False, True),  # Field 613: 241.9W - NEU ENTDECKT!
-            WattsSensorEntity(client, self, "pv_cmd22_field_1413", "PV CMD22 (Field 1413)", False, True),  # Field 1413: 451W - STARKER KANDIDAT!
-            
-            # ===== PV4 Mittlere Leistung (70-85W) - NEUE ENTDECKUNG =====
-            # Basierend auf aktueller Log-Analyse für PV4 = 70-75W
-            WattsSensorEntity(client, self, "pv4_field_70", "PV4 Field 70 (80.7W)", False, True),        # CMD 21 Field 70 = 80.7W - PV4 bei 70-75W!
-            WattsSensorEntity(client, self, "pv4_field_996", "PV4 Field 996 (74.2W)", False, True),      # CMD 21 Field 996 = 74.2W - PV4 bei 70-75W!
-            WattsSensorEntity(client, self, "pv4_field_361", "PV4 Field 361 (85.0W)", False, True),      # CMD 21 Field 361 = 85.0W - PV4 bei hoher Leistung
-            WattsSensorEntity(client, self, "pv4_field_997", "PV4 Field 997 (75.8W)", False, True),      # CMD 21 Field 997 = 75.8W - PV4 bei 70-75W!
-            
-            # Alternative Kandidaten
-            WattsSensorEntity(client, self, "pv2_alt_field_996", "PV2 Alt (Field 996)", False, True),    # Field 996: Alternative für PV2
-            
-            # Field 517 als potentielle Summe (zu hoch für einzelnen String)
-            WattsSensorEntity(client, self, "pv_sum_field_517", "PV Sum Field 517", False, True),        # Field 517: ~1238W (Summe?)
-            
-            # ===== Legacy Field 517 (jetzt als Summe interpretiert) =====
-            # Field 517 - PV1 Kandidat (306W -> 304W in tests)
-            WattsSensorEntity(client, self, "pv1_field_517", "PV1 Field 517", False, True),
             # "powGetPvSum": 2051.3975,
             WattsSensorEntity(client, self, "powGetPvSum", const.STREAM_POWER_PV_SUM),
             # "powGetSchuko1": 0.0,
