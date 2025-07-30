@@ -26,6 +26,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class StreamAC(BaseDevice):
     _parameter_analysis_done = False  # Klassenweite Variable für einmalige Analyse
+    _cached_parameters = None  # Cache für extrahierte Parameter
     
     def sensors(self, client: EcoflowApiClient) -> list[BaseSensorEntity]:
         return [
@@ -176,7 +177,9 @@ class StreamAC(BaseDevice):
             # "powGetBpCms": 1915.0862,
             WattsSensorEntity(client, self, "powGetBpCms", const.STREAM_POWER_BATTERY),
             # "powGetPv": 0.0,
-            WattsSensorEntity(client, self, "powGetPv", const.STREAM_POWER_PV_1, False, True),
+            WattsSensorEntity(client, self, "powGetPv1", const.STREAM_POWER_PV_1, False, True),
+            # "powGetPv1": 0.0,
+            WattsSensorEntity(client, self, "powGetPv1", const.STREAM_POWER_PV_2, False, True),
             # "powGetPv2": 0.0,
             WattsSensorEntity(client, self, "powGetPv2", const.STREAM_POWER_PV_2, False, True),
             # "powGetPv3": 0.0,
@@ -186,20 +189,12 @@ class StreamAC(BaseDevice):
             # "powGetPvSum": 2051.3975,
             WattsSensorEntity(client, self, "powGetPvSum", const.STREAM_POWER_PV_SUM),
             
-            # PV String Power - Individual String Values (from CMD 22 HeaderStream)
-            WattsSensorEntity(client, self, "pv_power_string_1", const.STREAM_POWER_PV_1, False, True),
-            WattsSensorEntity(client, self, "pv_power_string_2", const.STREAM_POWER_PV_2, False, True),
-            WattsSensorEntity(client, self, "pv_power_string_3", const.STREAM_POWER_PV_3, False, True),
-            WattsSensorEntity(client, self, "pv_power_string_4", const.STREAM_POWER_PV_4, False, True),
+            # ✅ NEUE BESTÄTIGTE PV-MAPPINGS aus CMD 21 Debug-Analyse
+            WattsSensorEntity(client, self, "powGetPv1", const.STREAM_POWER_PV_1, False, True),   # Field 70 - PV1 Power
+            # powGetPv ist bereits oben definiert als Field 361 - Main PV Power
+            # powGetPv3 ist bereits oben definiert als Field 996 - PV3 Power  
+            # powGetPv4 ist bereits oben definiert als Field 997 - PV4 Power
             
-            # PV Candidates - BESTÄTIGTE Kandidaten aus aktuellen Debug-Logs (alle ~9-10W)
-            WattsSensorEntity(client, self, "pv1_candidate_42", const.STREAM_POWER_PV_1, False, True),      # CMD 50 Field 42 = 10.0W - BESTÄTIGT!
-            WattsSensorEntity(client, self, "pv2_candidate_44", const.STREAM_POWER_PV_2, False, True),      # CMD 50 Field 44 = 9.6W - BESTÄTIGT!
-            WattsSensorEntity(client, self, "pv3_candidate_6", const.STREAM_POWER_PV_3, False, True),       # CMD 50 Field 6 = 9W - BESTÄTIGT!
-            WattsSensorEntity(client, self, "pv4_candidate_14", const.STREAM_POWER_PV_4, False, True),      # CMD 50 Field 14 = 9W - BESTÄTIGT!
-            
-            # Zusätzliche PV Kandidaten aus CMD 22
-            WattsSensorEntity(client, self, "pv_power_string_1", const.STREAM_POWER_PV_1, False, True),     # CMD 22 Field 1409 = 9W - BESTÄTIGT!
             
             # "powGetSchuko1": 0.0,
             WattsSensorEntity(client, self, "powGetSchuko1", const.STREAM_GET_SCHUKO1, False, True),
@@ -319,8 +314,12 @@ class StreamAC(BaseDevice):
         """
         Extrahiert alle definierten Parameter aus dieser Device-Klasse
         Diese Methode kann ohne Client-Instanz aufgerufen werden
+        Verwendet Caching um wiederholte Ausführung zu vermeiden
         """
-        return extract_sensor_parameters_from_device_class(cls)
+        if cls._cached_parameters is None:
+            _LOGGER.debug(f"Extracting parameters for {cls.__name__} (first time)")
+            cls._cached_parameters = extract_sensor_parameters_from_device_class(cls)
+        return cls._cached_parameters
 
     def _prepare_data_get_topic(self, raw_data) -> dict[str, any]:
         return super()._prepare_data(raw_data)
@@ -423,6 +422,7 @@ class StreamAC(BaseDevice):
             _LOGGER.error(error)
             _LOGGER.debug("raw_data : \"%s\"  raw_data.hex() : \"%s\"",str(raw_data),str(raw_data.hex()))
         
+       
         # Filter: Entferne field_xxxx Parameter von der MQTT-Übertragung (bleiben im Log)
         filtered_params = {}
         field_params_count = 0
@@ -433,7 +433,6 @@ class StreamAC(BaseDevice):
                 key.startswith("Champ_cmd50_3_field") or
                 key.startswith("Champ_cmd21_3_field") and key != "Champ_cmd21_3_field460" and key != "Champ_cmd21_3_field602"):
                 field_params_count += 1
-                _LOGGER.debug(f"🔧 DEBUG-ONLY Parameter (nicht via MQTT): {key} = {value}")
                 
                
                 continue
@@ -442,7 +441,7 @@ class StreamAC(BaseDevice):
             filtered_params[key] = value
         
         if field_params_count > 0:
-            _LOGGER.info(f"Filtered {field_params_count} debug-only field_xxx parameters from MQTT (kept in logs)")
+            _LOGGER.debug(f"Filtered {field_params_count} debug-only field_xxx parameters from MQTT (kept in logs)")
         
         raw["params"] = filtered_params
         return raw
@@ -577,8 +576,8 @@ class StreamAC(BaseDevice):
 
     def _debug_protobuf_fields(self, packet, decoded_params: dict):
         """
-        Debug-System: Analysiert Raw-Protobuf-Daten, um fehlende Field-Nummern zu identifizieren
-        Dieses System hilft dabei, die Protobuf-Definition systematisch zu vervollständigen
+        Debug-System: Analysiert Raw-Protobuf-Daten und zeigt alle nicht-konfigurierten Felder an
+        Hilfreich zur Identifizierung fehlender Parameter in stream_ac.py
         """
         if not hasattr(packet.msg, "pdata") or len(packet.msg.pdata) == 0:
             return
@@ -586,122 +585,80 @@ class StreamAC(BaseDevice):
         payload = packet.msg.pdata
         cmd_id = packet.msg.cmd_id
         
-        _LOGGER.info(f"=== PROTOBUF DEBUG ANALYSIS for CMD {cmd_id} ===")
-        _LOGGER.info(f"Payload length: {len(payload)} bytes")
-        _LOGGER.info(f"Decoded parameters: {len(decoded_params)}")
+        # Sammle alle bereits in stream_ac.py definierten Parameter
+        defined_params = self.get_defined_parameters()
         
-        # 1. Analysiere alle Protobuf-Fields im Raw-Payload
+        _LOGGER.debug(f"=== UNKNOWN FIELDS DEBUG for CMD {cmd_id} ===")
+        _LOGGER.debug(f"Defined parameters in stream_ac.py: {len(defined_params)}")
+        
+        # Analysiere alle Protobuf-Fields im Raw-Payload
         protobuf_fields = self._extract_protobuf_fields(payload)
-        _LOGGER.info(f"Raw protobuf fields found: {len(protobuf_fields)}")
         
-        # 2. Identifiziere fehlende Fields
-        decoded_field_numbers = set()
-        for field_info in protobuf_fields:
-            field_number = field_info['field_number']
-            if any(param_name for param_name in decoded_params.keys() 
-                   if not param_name.startswith(('unknown_', 'payload_', 'cmd_', 'repeated_', 'dominant_'))):
-                # Dieses Field wurde wahrscheinlich dekodiert
-                decoded_field_numbers.add(field_number)
-        
-        missing_fields = [f for f in protobuf_fields if f['field_number'] not in decoded_field_numbers]
-        
-        if missing_fields:
-            _LOGGER.info(f"=== MISSING PROTOBUF FIELDS ({len(missing_fields)}) ===")
-            for field_info in missing_fields:
-                field_num = field_info['field_number']
-                wire_type = field_info['wire_type']
-                value = field_info['value']
-                wire_type_name = self._get_wire_type_name(wire_type)
-                
-                _LOGGER.info(f"Field {field_num}: {wire_type_name} = {value}")
-                    
-        # 3. Generiere Protobuf-Definition-Vorschläge
-        if missing_fields:
-            _LOGGER.info("=== PROTOBUF DEFINITION SUGGESTIONS ===")
-            suggestions = self._generate_protobuf_suggestions(missing_fields, cmd_id)
-            for suggestion in suggestions:
-                _LOGGER.info(f"  {suggestion}")
-        
-        # 4. PV-Kandidaten-Suche: Intelligente Analyse aller verfügbaren Felder
-        _LOGGER.info("=== SMART PV CANDIDATE ANALYSIS ===")
-        _LOGGER.info("Analyzing all fields for PV patterns (0-800W range, 4 strings expected)")
-        
-        # Sammle alle numerischen Werte im PV-Bereich
-        pv_candidates = []
-        all_numeric_fields = []
+        # Identifiziere unbekannte/nicht-konfigurierte Felder
+        unknown_fields = []
+        known_fields = []
         
         for field_info in protobuf_fields:
             field_num = field_info['field_number']
             value = field_info['value']
             
-            if isinstance(value, (int, float)):
-                all_numeric_fields.append((field_num, value))
-                
-                # PV-Bereich: 0-800W (realistisch für Stream Ultra)
-                if 0 <= value <= 800:
-                    pv_candidates.append({
-                        'field': field_num,
-                        'value': value,
-                        'cmd_id': cmd_id
-                    })
-        
-        # Zeige ALLE numerischen Felder (zur Übersicht)
-        _LOGGER.info(f"=== ALL NUMERIC FIELDS (CMD {cmd_id}) ===")
-        for field_num, value in sorted(all_numeric_fields)[:20]:  # Top 20
-            if isinstance(value, float) and abs(value) > 1000:
-                _LOGGER.info(f"Field {field_num} = {value:.1f}")
+            # Prüfe ob dieses Field bereits in stream_ac.py konfiguriert ist
+            field_name = f"field_{field_num}"
+            
+            # Verschiedene mögliche Feldnamen prüfen
+            possible_names = [
+                field_name,
+                f"Champ_cmd{cmd_id}_field{field_num}",
+                f"Champ_cmd{cmd_id}_3_field{field_num}",
+                f"HeaderStream_field{field_num}"
+            ]
+            
+            is_known = any(name in defined_params for name in possible_names)
+            
+            if is_known:
+                known_fields.append(field_info)
             else:
-                _LOGGER.info(f"Field {field_num} = {value}")
+                unknown_fields.append(field_info)
         
-        if len(all_numeric_fields) > 20:
-            _LOGGER.info(f"... and {len(all_numeric_fields)-20} more numeric fields")
-        
-        # Analysiere PV-Kandidaten
-        if pv_candidates:
-            _LOGGER.info(f"=== PV CANDIDATES (0-800W range) ===")
-            sorted_candidates = sorted(pv_candidates, key=lambda x: x['value'], reverse=True)
+        # Zeige alle UNBEKANNTEN Felder mit ihren Werten
+        if unknown_fields:
+            _LOGGER.debug(f"=== UNKNOWN FIELDS ({len(unknown_fields)}) - NOT IN STREAM_AC.PY ===")
             
-            for i, candidate in enumerate(sorted_candidates):
-                field_num = candidate['field']
-                value = candidate['value']
-                marker = "🟢" if value > 50 else "🟡" if value > 10 else "⚪"
-                _LOGGER.info(f"{marker} PV Candidate #{i+1}: Field {field_num} = {value}W")
+            # Sortiere nach Feldnummer für bessere Übersicht
+            unknown_fields.sort(key=lambda x: x['field_number'])
+            
+            for field_info in unknown_fields:
+                field_num = field_info['field_number']
+                wire_type = field_info['wire_type']
+                value = field_info['value']
+                wire_type_name = self._get_wire_type_name(wire_type)
                 
-                # Spezielle Markierung für bereits konfigurierte Felder
-                if field_num in [6, 14, 15, 20, 42, 44, 52, 53, 54, 1363, 1364, 1366]:
-                    _LOGGER.info(f"   ⭐ This field is already configured in device class!")
-            
-            # Suche nach logischen Gruppierungen
-            _LOGGER.info("=== PV PATTERN ANALYSIS ===")
-            high_power_fields = [c for c in sorted_candidates if c['value'] > 100]
-            medium_power_fields = [c for c in sorted_candidates if 20 <= c['value'] <= 100]
-            low_power_fields = [c for c in sorted_candidates if 0 < c['value'] < 20]
-            
-            _LOGGER.info(f"High Power (>100W): {len(high_power_fields)} fields")
-            _LOGGER.info(f"Medium Power (20-100W): {len(medium_power_fields)} fields") 
-            _LOGGER.info(f"Low Power (0-20W): {len(low_power_fields)} fields")
-            
-            # Top 4 Kandidaten für PV1-PV4 vorschlagen
-            top_4 = sorted_candidates[:4]
-            if len(top_4) >= 4:
-                _LOGGER.info("=== SUGGESTED PV1-PV4 MAPPING ===")
-                for i, candidate in enumerate(top_4):
-                    pv_name = f"PV{i+1}"
-                    field_num = candidate['field']
-                    value = candidate['value']
-                    _LOGGER.info(f"🎯 {pv_name} = Field {field_num} = {value}W")
-            
-        else:
-            _LOGGER.info("🔍 No PV candidates found in expected range (0-800W)")
-            _LOGGER.info("This might indicate that PV values are in a different message or encoded differently")
-            
-        _LOGGER.info("=== END SMART PV ANALYSIS ===")
+                # Formatiere Wert je nach Typ
+                if isinstance(value, float):
+                    if abs(value) > 1000:
+                        value_str = f"{value:.1f}"
+                    else:
+                        value_str = f"{value:.2f}"
+                else:
+                    value_str = str(value)
+               
+               
+                _LOGGER.debug(f"UNKNOWN Field {field_num} ({wire_type_name}): {value_str}")
         
-        # Store candidates for potential auto-configuration
-        if pv_candidates:
-            decoded_params["_pv_candidates"] = sorted_candidates[:10]  # Top 10
-            
-        _LOGGER.info("=== END PROTOBUF DEBUG ANALYSIS ===")
+        else:
+            _LOGGER.info("✅ All fields are already configured in stream_ac.py")
+        
+        # Statistik
+        total_fields = len(protobuf_fields)
+        known_count = len(known_fields)
+        unknown_count = len(unknown_fields)
+
+        _LOGGER.debug(f"=== FIELD STATISTICS ===")
+        _LOGGER.debug(f"Total fields in CMD {cmd_id}: {total_fields}")
+        _LOGGER.debug(f"Known/configured: {known_count} ({known_count/total_fields*100:.1f}%)")
+        _LOGGER.debug(f"Unknown/missing: {unknown_count} ({unknown_count/total_fields*100:.1f}%)")
+
+        _LOGGER.debug(f"=== END UNKNOWN FIELDS DEBUG ===")
 
     def _extract_protobuf_fields(self, payload: bytes) -> list:
         """

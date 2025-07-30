@@ -26,44 +26,42 @@ syntax = "proto3";
         optional string module_sn = 24;
         optional string device_sn = 25;
          
-        // Comprehensive field mapping from debug logs - one of these should be the real SOC (76%)
-        optional uint32 field_1067 = 1067;    // Frequently seen
-        optional uint32 field_1299 = 1299;    // Values: 260, 263, 245, 247, 238, 239, 243, 220 
-        optional uint32 field_1306 = 1306;    // Values: 263, 247, 239, 245, 240, 220
-        optional uint32 field_1307 = 1307;    // Values: 1, 2, 3
-        optional uint32 field_1308 = 1308;    // Values: 803, 802, 801
-        optional uint32 field_1326 = 1326;    // Values: 540, 555, 562, 557, 582
-        optional uint32 field_1332 = 1332;    // Values: 660, 645, 638, 643, 618
-        // Weitere PV-Kandidaten aus CMD 22 Debug-Logs
-        optional uint32 pv_power_string_3 = 1363;         // PV String 3 Power (390-420W Bereich)
-        optional uint32 pv_power_string_4 = 1364;         // PV String 4 Power (390-420W Bereich)
-        optional uint32 field_1365 = 1365;    // Values: 403, 380, 390, 395, 394
-        optional uint32 field_1366 = 1366;    // Values: 407, 403, 413
-        optional uint32 field_1374 = 1374;    // Values: 2075, 2118, 2225
-        optional uint32 field_1388 = 1388;    // Values: 438
-        optional uint32 pv_total_power = 1389;          // GESAMTERZEUGUNG PV (18964 = 6.77kW/10^3*2.8?)
-        optional uint32 field_1390 = 1390;    // Seen in logs
-        optional uint32 field_1391 = 1391;    // Seen in logs
-        optional uint32 field_1420 = 1420;    // Values: 792
-        optional uint32 pv_candidate_1424 = 1424;    // PV Kandidat ~11W - BESTÄTIGT in Logs!
-        optional uint32 field_1431 = 1431;    // Values: 3, 4294967295
+        optional uint32 field_1067 = 1067;    
+        optional uint32 field_1299 = 1299;    
+        optional uint32 field_1306 = 1306;    
+        optional uint32 field_1307 = 1307;    
+        optional uint32 field_1308 = 1308;    
+        optional uint32 field_1326 = 1326;    
+        optional uint32 field_1332 = 1332;    
+        optional uint32 field_1333 = 1363;         
+        optional uint32 field_1334 = 1364;         
+        optional uint32 field_1365 = 1365;    
+        optional uint32 field_1366 = 1366;    
+        optional uint32 field_1374 = 1374;    
+        optional uint32 field_1388 = 1388;    
+        optional uint32 field_1389 = 1389;          
+        optional uint32 field_1390 = 1390;    
+        optional uint32 field_1391 = 1391;    
+        optional uint32 field_1420 = 1420;    
+        optional uint32 field_1424 = 1424;    
+        optional uint32 field_1431 = 1431;    
         
-        optional uint32 field_1400 = 1400;    // Potential SOC candidate
-        optional uint32 field_1401 = 1401;    // Potential SOC candidate
-        optional uint32 field_1402 = 1402;    // Potential SOC candidate
-        optional uint32 field_1403 = 1403;    // Potential SOC candidate
-        optional uint32 field_1404 = 1404;    // Potential SOC candidate
-        optional uint32 field_1405 = 1405;    // Potential SOC candidate
-        optional uint32 field_1406 = 1406;    // Potential SOC candidate
-        optional uint32 field_1407 = 1407;    // Potential SOC candidate
-        // PV-Leistung Kandidaten basierend auf Debug-Logs
-        optional uint32 pv_power_candidate_1408 = 1408;   // PV String Kandidat
-        optional uint32 pv_power_string_1 = 1409;         // PV String 1 Power (52-120W Bereich)
-        optional uint32 pv_power_string_2 = 1410;         // PV String 2 Power (52-120W Bereich) 
-        optional uint32 field_1412 = 1412;    // Potential SOC candidate
-        optional uint32 field_1413 = 1413;    // Potential SOC candidate
-        optional uint32 field_1414 = 1414;    // Potential SOC candidate
-        optional uint32 field_1415 = 1415;    // Potential SOC candidate
+        optional uint32 field_1400 = 1400;    
+        optional uint32 field_1401 = 1401;    
+        optional uint32 field_1402 = 1402;    
+        optional uint32 field_1403 = 1403;    
+        optional uint32 field_1404 = 1404;    
+        optional uint32 field_1405 = 1405;    
+        optional uint32 field_1406 = 1406;    
+        optional uint32 field_1407 = 1407;    
+        
+        optional uint32 field_1408 = 1408;  
+        optional uint32 field_1409 = 1409;         
+        optional uint32 field_14010 = 1410;         
+        optional uint32 field_1412 = 1412;    
+        optional uint32 field_1413 = 1413;    
+        optional uint32 field_1414 = 1414;    
+        optional uint32 field_1415 = 1415;    
         optional uint32 field_1393 = 1393;
         optional uint32 field_1394 = 1394;
         optional uint32 field_1416 = 1416;
@@ -86,7 +84,7 @@ syntax = "proto3";
         optional uint32 Champ_cmd50_3_field3 = 3;
         optional uint32 Champ_cmd50_3_field4 = 4;
         optional uint32 Champ_cmd50_3_field5 = 5;
-        optional float pv3_candidate_6 = 6;        // PV3 candidate ~9W - BESTÄTIGT in Logs!
+        optional uint32 Champ_cmd50_3_field6 = 6;        
         optional uint32 Champ_cmd50_3_field7 = 7;
         optional uint32 Champ_cmd50_3_field8 = 8;
         optional uint32 Champ_cmd50_3_field9 = 9;
@@ -94,18 +92,18 @@ syntax = "proto3";
         optional uint32 Champ_cmd50_3_field11 = 11;
         optional uint32 Champ_cmd50_3_field12 = 12;
         optional uint32 Champ_cmd50_3_field13 = 13;
-        optional float pv4_candidate_14 = 14;      // PV4 candidate ~9W - BESTÄTIGT in Logs!
+        optional uint32 Champ_cmd50_3_field14 = 14;      
         optional uint32 Champ_cmd50_3_field15 = 15;
         optional uint32 Champ_cmd50_3_field16 = 16;
         optional uint32 Champ_cmd50_3_field17 = 17;
         optional uint32 Champ_cmd50_3_field18 = 18;
         optional uint32 Champ_cmd50_3_field19 = 19;
-        optional uint32 pv_candidate_20 = 20;          // PV candidate ~42W
-        optional uint32 pv_candidate_21 = 21;          // PV candidate ~42W
+        optional uint32 Champ_cmd50_3_field20 = 20;          
+        optional uint32 Champ_cmd50_3_field21 = 21;          
         optional uint32 Champ_cmd50_3_field22 = 22;
         optional uint32 Champ_cmd50_3_field23 = 23;
         optional uint32 Champ_cmd50_3_field24 = 24;
-        optional float soc = 25;                        // ECHTER SOC-WERT: Field 25 - Hauptwert für MQTT
+        optional float soc = 25;                        
         optional uint32 Champ_cmd50_3_field26 = 26;
         optional uint32 Champ_cmd50_3_field27 = 27;
         optional uint32 Champ_cmd50_3_field28 = 28;
@@ -120,11 +118,11 @@ syntax = "proto3";
         optional uint32 Champ_cmd50_3_field37 = 37;
         optional uint32 Champ_cmd50_3_field38 = 38;
         optional string sn1 = 39;
-        optional uint32 pv_candidate_40 = 40;          // PV candidate ~58W (nahe PV2=52W)
+        optional uint32 Champ_cmd50_3_field40 = 40;          
         optional uint32 Champ_cmd50_3_field41 = 41;
-        optional float pv1_candidate_42 = 42;          // PV1 candidate ~11.0W - VIELVERSPRECHEND!
+        optional float Champ_cmd50_3_field42 = 42;          
         optional float Champ_cmd50_3_field43 = 43;
-        optional float pv2_candidate_44 = 44;          // PV2 candidate ~11.1W - VIELVERSPRECHEND!
+        optional float Champ_cmd50_3_field44 = 44;          
         optional uint32 Champ_cmd50_3_field45 = 45;
         optional uint32 Champ_cmd50_3_field46 = 46;
         optional uint32 Champ_cmd50_3_field47 = 47;
@@ -133,7 +131,7 @@ syntax = "proto3";
         optional uint32 Champ_cmd50_3_field50 = 50;
         optional uint32 Champ_cmd50_3_field51 = 51;
         optional float Champ_cmd50_3_field52 = 52;
-        optional float pv_candidate_53 = 53;           // PV candidate ~88W (nahe PV3=81W)
+        optional float Champ_cmd50_3_field53 = 53;          
         optional float Champ_cmd50_3_field54 = 54;
         optional uint32 Champ_cmd50_3_field55 = 55;
         optional string Champ_cmd50_3_field56 = 56;
@@ -194,14 +192,28 @@ syntax = "proto3";
     }
 
     message Champ_cmd21_3 {
-  optional float soc = 25;
-  optional float f32ShowSoc_cmd21 = 460;
-  optional uint32 soc_cmd21 = 46;
-  optional float pv4_candidate_361 = 361;  // PV4 candidate ~11-12W - SEHR VIELVERSPRECHEND!
-  optional float pv2_candidate_442 = 442;  // PV2 candidate ~39.8W (alter Wert)
-  optional float pv_total_candidate_616 = 616;  // Häufiger PV-Kandidat ~41-43W
-  optional float pv2_candidate_996 = 996;  // Another PV candidate ~10.6W
-}
+      
+        optional float powGetPv2 = 70;           
+        optional float powGetPv1 = 361;          
+        optional float powGetPv3 = 996;          
+        optional float powGetPv4 = 997; 
+        
+        optional uint32 Champ_cmd21_3_field282 = 282;
+        optional uint32 Champ_cmd21_3_field460 = 460;
+        optional float powGetSysGrid = 515; // power grid
+        optional float powGetSysLoad = 516;
+        optional float powGetPvSum = 517; // pv sum
+        optional float powGetBpCms = 518;
+        optional float Champ_cmd21_3_field602 = 602;
+        optional float gridConnectionPower = 616;
+        optional CloudMetter cloudMetter = 785;
+        optional float sysGridConnectionPower = 992;
+        optional float powGetSysLoadFromBp = 1003;
+        optional float powGetSysLoadFromGrid = 1004;
+        optional float powGetSchuko1 = 1210;
+                 
+    }
+    
 
     message Champ_cmd21_2 {
         optional Champ_cmd21_3 Champ_cmd21_2_champ_cmd21_3 = 1;

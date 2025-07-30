@@ -651,16 +651,6 @@ class EcoflowMqttPublisher:
                 _LOGGER.info(f"UNDEFINED PARAMETERS: {', '.join(undefined_summary[:10])}" + 
                            (f" ... and {len(undefined_summary)-10} more" if len(undefined_summary) > 10 else ""))
                 
-                # Zusätzlich: Detaillierte Info für interessante Parameter
-                interesting_undefined = {}
-                for param_name, param_value in undefined_found.items():
-                    # Suche nach interessanten Parametern (SOC, Power, Voltage, etc.)
-                    if any(keyword in param_name.lower() for keyword in 
-                           ["soc", "power", "watt", "volt", "temp", "cycle", "cap", "energy"]):
-                        interesting_undefined[param_name] = param_value
-                
-                if interesting_undefined:
-                    _LOGGER.info(f"INTERESTING UNDEFINED for {device_type}: {interesting_undefined}")
             
             _LOGGER.debug(f"Published {len(defined_found)} defined parameters for {device_sn}, " +
                          f"logged {len(undefined_found)} undefined parameters")

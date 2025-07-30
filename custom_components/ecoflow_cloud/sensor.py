@@ -800,9 +800,6 @@ def extract_sensor_parameters_from_device_class(device_class) -> set:
                         param_name.isidentifier() and
                         len(param_name) > 2):
                         defined_params.add(param_name)
-                        # Debug-Log nur wenn DEBUG-Level aktiv ist (weniger Spam)
-                        if _LOGGER.isEnabledFor(logging.DEBUG):
-                            _LOGGER.debug(f"Found parameter: {param_name}")
         
         # Info-Log nur einmal pro Device-Klasse mit Cache
         if not hasattr(extract_sensor_parameters_from_device_class, '_logged_classes'):
@@ -811,6 +808,12 @@ def extract_sensor_parameters_from_device_class(device_class) -> set:
         class_name = device_class.__name__ if hasattr(device_class, '__name__') else str(device_class)
         if class_name not in extract_sensor_parameters_from_device_class._logged_classes:
             _LOGGER.info(f"Extracted {len(defined_params)} parameters from device class {class_name}")
+            
+            # Zeige ALLE Parameter-Namen beim ersten Start (für vollständige Debug-Info)
+            if defined_params:
+                sorted_params = sorted(list(defined_params))
+                _LOGGER.debug(f"Found parameters: {', '.join(sorted_params)}")
+            
             extract_sensor_parameters_from_device_class._logged_classes.add(class_name)
         else:
             _LOGGER.debug(f"Re-extracted {len(defined_params)} parameters from device class {class_name} (cached)")
