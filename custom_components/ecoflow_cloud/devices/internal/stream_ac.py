@@ -457,7 +457,7 @@ class StreamAC(BaseDevice):
         if field_params_count > 0:
             _LOGGER.debug(f"Filtered {field_params_count} debug-only field_xxx parameters from MQTT (kept in logs)")
         
-        _LOGGER.debug(f"Kept {len(filtered_params)} parameters for MQTT transmission")
+        _LOGGER.debug(f"Kept {len(filtered_params)} parameters for MQTT transmission: {list(filtered_params.keys())}")
         
         raw["params"] = filtered_params
         return raw
