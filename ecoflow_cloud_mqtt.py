@@ -2527,6 +2527,919 @@ class EcoflowMqttPublisher:
             _LOGGER.debug(f"Connection health check error: {e}")
             return False
 
+    async def send_enhanced_app_simulation(self):
+        """
+        Enhanced App Simulation: Simulates EcoFlow app startup sequence
+        to trigger data flow after reconnects or initial startup
+        Improved version with more authentic message sequence
+        """
+        if not self.api_client:
+            return False
+            
+        try:
+            mqtt_client = self.get_ecoflow_mqtt_client()
+            if not mqtt_client:
+                _LOGGER.warning("No MQTT client for app simulation")
+                return False
+                
+            _LOGGER.info("Starting enhanced app simulation sequence...")
+            
+            simulation_success = 0
+            total_attempts = 0
+            
+            for device_sn in self.device_sns:
+                try:
+                    # Nutze detect_device_type für Typ-spezifische Simulation
+                    device_type = self.detect_device_type(device_sn)
+                    _LOGGER.info(f"Starting app simulation for {device_type} device: {device_sn}")
+                    
+                    # === Phase 1: Initial Quota Request (App-Startup) ===
+                    quota_topic = f"/app/device/quota/{device_sn}"
+                    quota_payload = {
+                        "id": self.get_next_message_id(),
+                        "version": "1.0", 
+                        "params": {},
+                        "timestamp": int(time.time() * 1000)
+                    }
+                    result = mqtt_client.publish(quota_topic, json.dumps(quota_payload), qos=1)
+                    if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                        simulation_success += 1
+                        _LOGGER.info(f"Quota request sent for {device_sn}")
+                    total_attempts += 1
+                    
+                    await asyncio.sleep(1.0)  # Längere Pause für Server-Verarbeitung
+                    
+                    # === Phase 2: Property Get Request mit QuotaMap ===
+                    prop_topic = f"/app/device/property/{device_sn}/get"
+                    prop_payload = {
+                        "id": self.get_next_message_id(),
+                        "version": "1.0",
+                        "params": {"quotaMap": 1},
+                        "timestamp": int(time.time() * 1000)
+                    }
+                    result = mqtt_client.publish(prop_topic, json.dumps(prop_payload), qos=1)
+                    if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                        simulation_success += 1
+                        _LOGGER.info(f"Property request sent for {device_sn}")
+                    total_attempts += 1
+                    
+                    await asyncio.sleep(1.0)
+                    
+                    # === Phase 3: Device-spezifische Thing Property Requests ===
+                    if "stream" in device_type.lower() or "ultra" in device_type.lower():
+                        # Stream Ultra: Mehrere spezifische Anfragen für bessere Aktivierung
+                        stream_requests = [
+                            {"cmdSet": 3, "cmdId": 254, "dataType": 0},  # Standard Wakeup
+                            {"cmdSet": 3, "cmdId": 1, "dataType": 0},    # Status Request
+                            {"cmdSet": 11, "cmdId": 1, "dataType": 0},   # Battery Info
+                        ]
+                        
+                        for i, params in enumerate(stream_requests):
+                            thing_topic = f"/app/{self.username}/{device_sn}/thing/property/get"
+                            thing_payload = {
+                                "id": self.get_next_message_id(),
+                                "version": "1.0",
+                                "params": params,
+                                "timestamp": int(time.time() * 1000)
+                            }
+                            
+                            result = mqtt_client.publish(thing_topic, json.dumps(thing_payload), qos=1)
+                            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                                simulation_success += 1
+                                _LOGGER.info(f"Stream Ultra request {i+1}/3 sent for {device_sn}")
+                            total_attempts += 1
+                            
+                            await asyncio.sleep(0.8)  # Kurze Pause zwischen Stream-Requests
+                            
+                        _LOGGER.info(f"Stream Ultra parameters used for {device_sn}")
+                    else:
+                        # Standard Geräte: Mehrere Standard-Requests
+                        standard_requests = [
+                            {"cmdSet": 20, "cmdId": 1},     # Standard Status
+                            {"cmdSet": 6, "cmdId": 1},      # Battery Status
+                            {"cmdSet": 1, "cmdId": 1},      # Basic Info
+                        ]
+                        
+                        for i, params in enumerate(standard_requests):
+                            thing_topic = f"/app/{self.username}/{device_sn}/thing/property/get"
+                            thing_payload = {
+                                "id": self.get_next_message_id(),
+                                "version": "1.0",
+                                "params": params,
+                                "timestamp": int(time.time() * 1000)
+                            }
+                            
+                            result = mqtt_client.publish(thing_topic, json.dumps(thing_payload), qos=1)
+                            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                                simulation_success += 1
+                                _LOGGER.info(f"Standard request {i+1}/3 sent for {device_sn}")
+                            total_attempts += 1
+                            
+                            await asyncio.sleep(0.8)
+                            
+                        _LOGGER.info(f"Standard parameters used for {device_sn}")
+                    
+                    # === Phase 4: Abschließende Status-Abfrage ===
+                    status_topic = f"/app/device/property/{device_sn}/get"
+                    status_payload = {
+                        "id": self.get_next_message_id(),
+                        "version": "1.0",
+                        "params": {"quotaMap": 0},  # Status ohne Quota
+                        "timestamp": int(time.time() * 1000)
+                    }
+                    result = mqtt_client.publish(status_topic, json.dumps(status_payload), qos=1)
+                    if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                        simulation_success += 1
+                        _LOGGER.info(f"Final status request sent for {device_sn}")
+                    total_attempts += 1
+                    
+                    await asyncio.sleep(2.0)  # Längere Pause zwischen Geräten
+                    
+                except Exception as device_error:
+                    _LOGGER.warning(f"App simulation failed for device {device_sn}: {device_error}")
+            
+            # === Phase 5: Zusätzliche Stream Ultra Wakeup Sequence ===
+            await self.send_stream_ultra_wakeup_sequence()
+            
+            # === Phase 6: API-Level Device Activation ===
+            await self.send_api_device_activation()
+            
+            success_rate = simulation_success / total_attempts if total_attempts > 0 else 0
+            _LOGGER.info(f"Enhanced app simulation completed: {simulation_success}/{total_attempts} messages sent successfully ({success_rate:.1%})")
+            
+            # === Phase 6: Warte auf erste Antworten ===
+            _LOGGER.info("Waiting 10 seconds for device responses...")
+            await asyncio.sleep(10)
+            
+            # Prüfe ob Nachrichten angekommen sind
+            if hasattr(self, 'message_count') and self.message_count > 0:
+                _LOGGER.info(f"Success! Received {self.message_count} messages after app simulation")
+                return True
+            else:
+                _LOGGER.warning("No messages received yet - triggering deep sleep recovery")
+                
+                # === Phase 7: Deep Sleep Recovery als Fallback ===
+                _LOGGER.info("Starting deep sleep recovery protocol...")
+                deep_sleep_success = await self.send_deep_sleep_wakeup_protocol()
+                
+                # Warte nochmal auf Antworten nach Deep Sleep Recovery
+                await asyncio.sleep(15)
+                
+                if hasattr(self, 'message_count') and self.message_count > 0:
+                    _LOGGER.info(f"SUCCESS! Deep sleep recovery activated device - received {self.message_count} messages")
+                    return True
+                elif deep_sleep_success:
+                    _LOGGER.info("Deep sleep recovery completed successfully but no immediate messages")
+                    return True
+                else:
+                    _LOGGER.warning("Enhanced app simulation and deep sleep recovery completed - may need manual intervention")
+                    return success_rate > 0.7  # Erfolg wenn mehr als 70% der Nachrichten erfolgreich
+            
+        except Exception as e:
+            _LOGGER.error(f"Enhanced app simulation failed: {e}")
+            return False
+
+    async def send_stream_ultra_wakeup_sequence(self):
+        """
+        Erweiterte Stream Ultra Wakeup-Sequenz mit Deep Sleep Recovery
+        Kombiniert normale Wakeup-Sequenz mit intensiver Deep Sleep Recovery
+        """
+        if not self.api_client:
+            return
+            
+        try:
+            mqtt_client = self.get_ecoflow_mqtt_client()
+            if not mqtt_client:
+                return
+                
+            # Suche nach Stream Ultra Geräten
+            stream_devices = []
+            for device_sn in self.device_sns:
+                device_type = self.detect_device_type(device_sn).lower()
+                if 'stream' in device_type or 'ultra' in device_type:
+                    stream_devices.append(device_sn)
+            
+            if not stream_devices:
+                return
+                
+            _LOGGER.info(f"Sending enhanced Stream Ultra wakeup sequence for {len(stream_devices)} devices...")
+            
+            for device_sn in stream_devices:
+                # Phase 1: App Connection Simulation (Deep Sleep Recovery)
+                _LOGGER.info(f"Starting deep sleep recovery for {device_sn}")
+                
+                app_connect_messages = [
+                    {
+                        "topic": f"/app/device/heartbeat/{device_sn}",
+                        "payload": {
+                            "id": self.get_next_message_id(),
+                            "version": "1.0",
+                            "timestamp": int(time.time() * 1000),
+                            "src": 32,
+                            "dest": 53,
+                            "deviceSn": device_sn,
+                            "params": {"heartbeat": 1}
+                        }
+                    },
+                    {
+                        "topic": f"/app/device/connect/{device_sn}",
+                        "payload": {
+                            "id": self.get_next_message_id(),
+                            "version": "1.0", 
+                            "timestamp": int(time.time() * 1000),
+                            "src": 32,
+                            "dest": 53,
+                            "deviceSn": device_sn,
+                            "params": {"connect": 1}
+                        }
+                    }
+                ]
+                
+                for msg in app_connect_messages:
+                    try:
+                        result = mqtt_client.publish(msg["topic"], json.dumps(msg["payload"]), qos=1)
+                        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                            _LOGGER.info(f"App connection signal sent: {msg['topic']}")
+                        await asyncio.sleep(0.5)
+                    except Exception as e:
+                        _LOGGER.debug(f"App connection failed: {e}")
+                
+                # Phase 2: Device Discovery/Ping
+                discovery_topics = [
+                    f"/ping/{device_sn}",
+                    f"/discover/{device_sn}", 
+                    f"/app/ping/{device_sn}",
+                    f"/app/discover/{device_sn}"
+                ]
+                
+                ping_payload = {
+                    "id": self.get_next_message_id(),
+                    "version": "1.0",
+                    "timestamp": int(time.time() * 1000),
+                    "params": {"ping": 1}
+                }
+                
+                for topic in discovery_topics:
+                    try:
+                        result = mqtt_client.publish(topic, json.dumps(ping_payload), qos=1)
+                        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                            _LOGGER.info(f"Device discovery ping sent: {topic}")
+                        await asyncio.sleep(0.3)
+                    except Exception as e:
+                        _LOGGER.debug(f"Discovery ping failed: {e}")
+                
+                # Phase 3: Stream Ultra Power Management Wake-up
+                power_wakeup_commands = [
+                    # System Power Management
+                    {"cmdSet": 1, "cmdId": 1, "params": {"sys_power_on": 1}},
+                    {"cmdSet": 1, "cmdId": 2, "params": {"sys_wakeup": 1}},
+                    {"cmdSet": 1, "cmdId": 254, "params": {"sys_enable_all": 1}},
+                    
+                    # Battery Management System
+                    {"cmdSet": 2, "cmdId": 1, "params": {"bms_wakeup": 1}},
+                    {"cmdSet": 2, "cmdId": 2, "params": {"bms_enable": 1}},
+                    
+                    # Inverter Management
+                    {"cmdSet": 3, "cmdId": 1, "params": {"inv_enable": 1}},
+                    {"cmdSet": 3, "cmdId": 254, "params": {"inv_wakeup": 1}},
+                ]
+                
+                for i, cmd in enumerate(power_wakeup_commands):
+                    wakeup_topic = f"/app/{self.username}/{device_sn}/thing/property/set"
+                    wakeup_payload = {
+                        "id": self.get_next_message_id(),
+                        "version": "1.0",
+                        "timestamp": int(time.time() * 1000),
+                        "src": 32,
+                        "dest": 53,
+                        "deviceSn": device_sn,
+                        "params": cmd
+                    }
+                    
+                    try:
+                        result = mqtt_client.publish(wakeup_topic, json.dumps(wakeup_payload), qos=1)
+                        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                            _LOGGER.info(f"Stream Ultra power wakeup {i+1}/7 sent (cmdSet: {cmd['cmdSet']}, cmdId: {cmd['cmdId']})")
+                        await asyncio.sleep(0.5)
+                    except Exception as e:
+                        _LOGGER.debug(f"Power wakeup command failed: {e}")
+                
+                # Phase 4: Communication Wake-up
+                comm_wakeup_commands = [
+                    {"cmdSet": 20, "cmdId": 1, "params": {"comm_enable": 1}},
+                    {"cmdSet": 20, "cmdId": 2, "params": {"data_transmission_enable": 1}},
+                    {"cmdSet": 11, "cmdId": 1, "params": {"ac_out_enable": 1}},
+                    {"cmdSet": 12, "cmdId": 1, "params": {"dc_out_enable": 1}},
+                ]
+                
+                for i, cmd in enumerate(comm_wakeup_commands):
+                    wakeup_topic = f"/app/{self.username}/{device_sn}/thing/property/set"
+                    wakeup_payload = {
+                        "id": self.get_next_message_id(),
+                        "version": "1.0",
+                        "timestamp": int(time.time() * 1000),
+                        "src": 32,
+                        "dest": 53,
+                        "deviceSn": device_sn,
+                        "params": cmd
+                    }
+                    
+                    try:
+                        result = mqtt_client.publish(wakeup_topic, json.dumps(wakeup_payload), qos=1)
+                        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                            _LOGGER.info(f"Stream Ultra comm wakeup {i+1}/4 sent (cmdSet: {cmd['cmdSet']}, cmdId: {cmd['cmdId']})")
+                        await asyncio.sleep(0.4)
+                    except Exception as e:
+                        _LOGGER.debug(f"Comm wakeup command failed: {e}")
+                
+                # Phase 5: Status Request Bombardment
+                status_request_commands = [
+                    {"cmdSet": 0, "cmdId": 1},      # General Status
+                    {"cmdSet": 0, "cmdId": 254},    # All Status
+                    {"cmdSet": 1, "cmdId": 1},      # System Status
+                    {"cmdSet": 2, "cmdId": 1},      # Battery Status
+                    {"cmdSet": 3, "cmdId": 1},      # Inverter Status
+                    {"cmdSet": 11, "cmdId": 1},     # AC Status
+                    {"cmdSet": 20, "cmdId": 1},     # Communication Status
+                ]
+                
+                for i, cmd in enumerate(status_request_commands):
+                    status_topic = f"/app/{self.username}/{device_sn}/thing/property/get"
+                    status_payload = {
+                        "id": self.get_next_message_id(),
+                        "version": "1.0",
+                        "timestamp": int(time.time() * 1000),
+                        "src": 32,
+                        "dest": 53,
+                        "deviceSn": device_sn,
+                        "params": cmd
+                    }
+                    
+                    try:
+                        result = mqtt_client.publish(status_topic, json.dumps(status_payload), qos=1)
+                        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                            _LOGGER.info(f"Stream Ultra status request {i+1}/7 sent (cmdSet: {cmd['cmdSet']}, cmdId: {cmd['cmdId']})")
+                        await asyncio.sleep(0.3)
+                    except Exception as e:
+                        _LOGGER.debug(f"Status request failed: {e}")
+                
+                # Phase 6: Alternative Topic Wake-up
+                alternative_topics = [
+                    f"/stream/{device_sn}/wakeup",
+                    f"/ultra/{device_sn}/activate",
+                    f"/device/{device_sn}/stream/enable",
+                ]
+                
+                wakeup_payload = {
+                    "id": self.get_next_message_id(),
+                    "version": "1.0",
+                    "timestamp": int(time.time() * 1000),
+                    "params": {"wakeup": 1, "force": 1, "stream_ultra": 1}
+                }
+                
+                for topic in alternative_topics:
+                    try:
+                        result = mqtt_client.publish(topic, json.dumps(wakeup_payload), qos=1)
+                        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                            _LOGGER.info(f"Stream Ultra alternative topic sent: {topic}")
+                        await asyncio.sleep(0.2)
+                    except Exception as e:
+                        _LOGGER.debug(f"Alternative topic failed: {e}")
+                
+                # Phase 7: Heartbeat Simulation
+                heartbeat_topics = [
+                    f"/app/{self.username}/{device_sn}/heartbeat",
+                    f"/app/device/{device_sn}/heartbeat",
+                ]
+                
+                heartbeat_payload = {
+                    "id": self.get_next_message_id(),
+                    "version": "1.0",
+                    "timestamp": int(time.time() * 1000),
+                    "params": {
+                        "heartbeat": 1,
+                        "app_active": 1,
+                        "stream_ultra_session": int(time.time())
+                    }
+                }
+                
+                for topic in heartbeat_topics:
+                    try:
+                        result = mqtt_client.publish(topic, json.dumps(heartbeat_payload), qos=1)
+                        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                            _LOGGER.info(f"Stream Ultra heartbeat sent: {topic}")
+                        await asyncio.sleep(0.2)
+                    except Exception as e:
+                        _LOGGER.debug(f"Heartbeat failed: {e}")
+                
+                _LOGGER.info(f"Complete Stream Ultra deep sleep wakeup sequence sent for {device_sn}")
+                
+        except Exception as e:
+            _LOGGER.warning(f"Stream Ultra wakeup sequence error: {e}")
+
+    async def send_api_device_activation(self):
+        """
+        API-Level Device Activation - direkte API-Calls um Geräte zu aktivieren
+        Dies ergänzt die MQTT-basierten Nachrichten
+        """
+        try:
+            _LOGGER.info("Starting API-level device activation...")
+            
+            for device_sn in self.device_sns:
+                try:
+                    # API Quota Call für jedes Gerät
+                    if hasattr(self.api_client, 'get_device_quota'):
+                        await self.api_client.get_device_quota(device_sn)
+                        _LOGGER.info(f"API quota call sent for {device_sn}")
+                        await asyncio.sleep(1)
+                    
+                    # API Property Call 
+                    if hasattr(self.api_client, 'get_device_info'):
+                        await self.api_client.get_device_info(device_sn)
+                        _LOGGER.info(f"API device info call sent for {device_sn}")
+                        await asyncio.sleep(1)
+                        
+                    # Generischer API Call falls spezifische nicht verfügbar
+                    if hasattr(self.api_client, 'quota_all'):
+                        await self.api_client.quota_all(None)
+                        _LOGGER.info(f"API quota_all call sent")
+                        break  # Nur einmal für alle Geräte
+                        
+                except Exception as device_api_error:
+                    _LOGGER.debug(f"API activation for {device_sn} failed: {device_api_error}")
+                    
+            _LOGGER.info("API-level device activation completed")
+            
+        except Exception as e:
+            _LOGGER.debug(f"API device activation error: {e}")
+
+    async def send_persistent_activation_attempts(self, max_attempts=5):
+        """
+        Persistente Aktivierungsversuche für schlafende Stream Ultra Geräte
+        Kombiniert normale Wakeup-Sequenz mit Deep Sleep Recovery
+        """
+        try:
+            _LOGGER.info(f"Starting persistent activation attempts (max {max_attempts})...")
+            
+            for attempt in range(max_attempts):
+                _LOGGER.info(f"Activation attempt {attempt + 1}/{max_attempts}")
+                
+                # Strategy 1: Enhanced App Simulation
+                initial_count = getattr(self, 'message_count', 0)
+                await self.send_enhanced_app_simulation()
+                await asyncio.sleep(5)
+                
+                # Check for messages
+                current_count = getattr(self, 'message_count', 0)
+                if current_count > initial_count:
+                    new_messages = current_count - initial_count
+                    _LOGGER.info(f"SUCCESS! Got {new_messages} messages on attempt {attempt + 1}")
+                    return True
+                
+                # Strategy 2: Deep Sleep Wake-up Protocol
+                await self.send_deep_sleep_wakeup_protocol()
+                await asyncio.sleep(8)
+                
+                # Check again
+                current_count = getattr(self, 'message_count', 0)
+                if current_count > initial_count:
+                    new_messages = current_count - initial_count
+                    _LOGGER.info(f"SUCCESS! Got {new_messages} messages with deep sleep wakeup")
+                    return True
+                
+                # Strategy 3: Alternative MQTT topics
+                await self.send_alternative_activation_messages()
+                await asyncio.sleep(5)
+                
+                # Check again
+                current_count = getattr(self, 'message_count', 0)
+                if current_count > initial_count:
+                    new_messages = current_count - initial_count
+                    _LOGGER.info(f"SUCCESS! Got {new_messages} messages with alternative topics")
+                    return True
+                
+                # Strategy 4: Power Cycle Simulation (for Stream Ultra)
+                await self.send_stream_ultra_power_cycle_simulation()
+                await asyncio.sleep(5)
+                
+                # Check again
+                current_count = getattr(self, 'message_count', 0)
+                if current_count > initial_count:
+                    new_messages = current_count - initial_count
+                    _LOGGER.info(f"SUCCESS! Got {new_messages} messages with power cycle simulation")
+                    return True
+                
+                # Strategy 5: Intensive API calls
+                await self.send_intensive_api_activation()
+                await asyncio.sleep(10)  # Longer wait for API responses
+                
+                # Final check
+                current_count = getattr(self, 'message_count', 0)
+                if current_count > initial_count:
+                    new_messages = current_count - initial_count
+                    _LOGGER.info(f"SUCCESS! Got {new_messages} messages with API activation")
+                    return True
+                
+                _LOGGER.warning(f"Attempt {attempt + 1} failed - no messages received")
+                if attempt < max_attempts - 1:
+                    _LOGGER.info("Waiting 15 seconds before next attempt...")
+                    await asyncio.sleep(15)
+            
+            _LOGGER.warning(f"All {max_attempts} activation attempts failed")
+            _LOGGER.info("Manual intervention recommended: Open EcoFlow app or press device power button")
+            return False
+            
+        except Exception as e:
+            _LOGGER.error(f"Persistent activation attempts failed: {e}")
+            return False
+
+    async def send_alternative_activation_messages(self):
+        """
+        Alternative MQTT topics and message formats based on other implementations
+        """
+        try:
+            mqtt_client = self.get_ecoflow_mqtt_client()
+            if not mqtt_client:
+                return
+                
+            _LOGGER.info("Sending alternative activation messages...")
+            
+            for device_sn in self.device_sns:
+                # Alternative topic structures seen in other implementations
+                alternative_messages = [
+                    # Topic variation 1
+                    {
+                        "topic": f"/topic/device/{device_sn}/quota",
+                        "payload": {
+                            "id": self.get_next_message_id(),
+                            "version": "1.0",
+                            "params": {},
+                            "timestamp": int(time.time() * 1000)
+                        }
+                    },
+                    # Topic variation 2  
+                    {
+                        "topic": f"/topic/{device_sn}/property/get",
+                        "payload": {
+                            "id": self.get_next_message_id(),
+                            "version": "1.0", 
+                            "params": {"quotaMap": 1},
+                            "timestamp": int(time.time() * 1000)
+                        }
+                    },
+                    # Direct device topic
+                    {
+                        "topic": f"/{device_sn}/property/get",
+                        "payload": {
+                            "id": self.get_next_message_id(),
+                            "version": "1.0",
+                            "params": {"quotaMap": 1},
+                            "timestamp": int(time.time() * 1000)
+                        }
+                    }
+                ]
+                
+                for i, msg in enumerate(alternative_messages):
+                    result = mqtt_client.publish(msg["topic"], json.dumps(msg["payload"]), qos=1)
+                    if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                        _LOGGER.info(f"Alternative message {i+1}/3 sent to {msg['topic']}")
+                    await asyncio.sleep(1)
+                    
+        except Exception as e:
+            _LOGGER.debug(f"Alternative activation messages error: {e}")
+
+    async def send_intensive_api_activation(self):
+        """
+        Intensive API-based activation with multiple calls
+        """
+        try:
+            _LOGGER.info("Starting intensive API activation...")
+            
+            # Multiple API calls in sequence
+            api_calls = [
+                "quota_all",
+                "get_device_quota", 
+                "get_device_info",
+                "get_device_list"
+            ]
+            
+            for call_name in api_calls:
+                try:
+                    if hasattr(self.api_client, call_name):
+                        method = getattr(self.api_client, call_name)
+                        if call_name in ["get_device_quota", "get_device_info"]:
+                            # Device-specific calls
+                            for device_sn in self.device_sns:
+                                await method(device_sn)
+                                _LOGGER.info(f"API {call_name} called for {device_sn}")
+                                await asyncio.sleep(1)
+                        else:
+                            # Global calls
+                            await method(None)
+                            _LOGGER.info(f"API {call_name} called")
+                            await asyncio.sleep(1)
+                except Exception as api_error:
+                    _LOGGER.debug(f"API call {call_name} failed: {api_error}")
+                    
+        except Exception as e:
+            _LOGGER.debug(f"Intensive API activation error: {e}")
+
+    async def send_deep_sleep_wakeup_protocol(self):
+        """
+        Deep Sleep Wake-up Protocol für alle EcoFlow Geräte
+        Kombiniert App Connection Simulation mit intensiven Wake-up Commands
+        """
+        if not self.api_client:
+            return False
+            
+        try:
+            mqtt_client = self.get_ecoflow_mqtt_client()
+            if not mqtt_client:
+                _LOGGER.warning("No MQTT client for deep sleep wakeup")
+                return False
+                
+            _LOGGER.info("Starting deep sleep wakeup protocol...")
+            
+            success_count = 0
+            total_attempts = 0
+            
+            for device_sn in self.device_sns:
+                device_type = self.detect_device_type(device_sn)
+                _LOGGER.info(f"Deep sleep wakeup for {device_type}: {device_sn}")
+                
+                # Phase 1: App Connection Simulation
+                app_connect_messages = [
+                    {
+                        "topic": f"/app/device/heartbeat/{device_sn}",
+                        "payload": {
+                            "id": self.get_next_message_id(),
+                            "version": "1.0",
+                            "timestamp": int(time.time() * 1000),
+                            "src": 32,
+                            "dest": 53,
+                            "deviceSn": device_sn,
+                            "params": {"heartbeat": 1}
+                        }
+                    },
+                    {
+                        "topic": f"/app/device/connect/{device_sn}",
+                        "payload": {
+                            "id": self.get_next_message_id(),
+                            "version": "1.0", 
+                            "timestamp": int(time.time() * 1000),
+                            "src": 32,
+                            "dest": 53,
+                            "deviceSn": device_sn,
+                            "params": {"connect": 1}
+                        }
+                    }
+                ]
+                
+                for msg in app_connect_messages:
+                    try:
+                        result = mqtt_client.publish(msg["topic"], json.dumps(msg["payload"]), qos=1)
+                        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                            success_count += 1
+                            _LOGGER.info(f"App connection signal sent: {msg['topic']}")
+                        total_attempts += 1
+                        await asyncio.sleep(0.5)
+                    except Exception as e:
+                        _LOGGER.debug(f"App connection failed: {e}")
+                        
+                # Phase 2: Device Discovery/Ping
+                discovery_topics = [
+                    f"/ping/{device_sn}",
+                    f"/discover/{device_sn}", 
+                    f"/app/ping/{device_sn}",
+                    f"/app/discover/{device_sn}"
+                ]
+                
+                ping_payload = {
+                    "id": self.get_next_message_id(),
+                    "version": "1.0",
+                    "timestamp": int(time.time() * 1000),
+                    "params": {"ping": 1}
+                }
+                
+                for topic in discovery_topics:
+                    try:
+                        result = mqtt_client.publish(topic, json.dumps(ping_payload), qos=1)
+                        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                            success_count += 1
+                            _LOGGER.info(f"Device discovery ping sent: {topic}")
+                        total_attempts += 1
+                        await asyncio.sleep(0.3)
+                    except Exception as e:
+                        _LOGGER.debug(f"Discovery ping failed: {e}")
+                
+                # Phase 3: Device-specific Wake-up Commands
+                if "stream" in device_type.lower() or "ultra" in device_type.lower():
+                    # Stream Ultra spezifische Commands
+                    await self._send_stream_ultra_deep_sleep_commands(device_sn, mqtt_client)
+                else:
+                    # Standard EcoFlow Geräte Commands
+                    await self._send_standard_deep_sleep_commands(device_sn, mqtt_client)
+                
+                # Phase 4: Data Request Bombardment
+                data_request_topics = [
+                    f"/app/device/property/{device_sn}",
+                    f"/app/device/property/{device_sn}/get", 
+                    f"/app/device/quota/{device_sn}",
+                    f"/topic/device/{device_sn}/thing/property/get",
+                    f"/app/{self.username}/{device_sn}/thing/property/get"
+                ]
+                
+                for topic in data_request_topics:
+                    data_payload = {
+                        "id": self.get_next_message_id(),
+                        "version": "1.0",
+                        "timestamp": int(time.time() * 1000),
+                        "params": {"quotaMap": 1, "force": 1}
+                    }
+                    
+                    try:
+                        result = mqtt_client.publish(topic, json.dumps(data_payload), qos=1)
+                        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                            success_count += 1
+                            _LOGGER.info(f"Data request sent: {topic}")
+                        total_attempts += 1
+                        await asyncio.sleep(0.4)
+                    except Exception as e:
+                        _LOGGER.debug(f"Data request failed: {e}")
+                
+            success_rate = success_count / total_attempts if total_attempts > 0 else 0
+            _LOGGER.info(f"Deep sleep wakeup protocol completed: {success_count}/{total_attempts} messages sent ({success_rate:.1%})")
+            
+            return success_rate > 0.8
+            
+        except Exception as e:
+            _LOGGER.error(f"Deep sleep wakeup protocol failed: {e}")
+            return False
+
+    async def _send_stream_ultra_deep_sleep_commands(self, device_sn: str, mqtt_client):
+        """Stream Ultra spezifische Deep Sleep Wake-up Commands"""
+        try:
+            commands = [
+                # Power Management Wake-up
+                {"cmdSet": 1, "cmdId": 1, "params": {"sys_power_on": 1}},
+                {"cmdSet": 1, "cmdId": 2, "params": {"sys_wakeup": 1}},
+                {"cmdSet": 1, "cmdId": 254, "params": {"sys_enable_all": 1}},
+                
+                # Battery Management System
+                {"cmdSet": 2, "cmdId": 1, "params": {"bms_wakeup": 1}},
+                {"cmdSet": 2, "cmdId": 254, "params": {"bms_enable": 1}},
+                
+                # Inverter Management
+                {"cmdSet": 3, "cmdId": 1, "params": {"inv_enable": 1}},
+                {"cmdSet": 3, "cmdId": 254, "params": {"inv_wakeup": 1}},
+                
+                # Communication System
+                {"cmdSet": 20, "cmdId": 1, "params": {"comm_enable": 1}},
+                {"cmdSet": 20, "cmdId": 2, "params": {"data_enable": 1}},
+                
+                # AC/DC Control
+                {"cmdSet": 11, "cmdId": 1, "params": {"ac_enable": 1}},
+                {"cmdSet": 12, "cmdId": 1, "params": {"dc_enable": 1}},
+                
+                # Status Request Commands
+                {"cmdSet": 0, "cmdId": 1, "params": {"get_status": 1}},
+                {"cmdSet": 0, "cmdId": 254, "params": {"get_all": 1}}
+            ]
+            
+            for i, cmd in enumerate(commands):
+                topic = f"/app/{self.username}/{device_sn}/thing/property/set"
+                payload = {
+                    "id": self.get_next_message_id(),
+                    "version": "1.0",
+                    "timestamp": int(time.time() * 1000),
+                    "src": 32,
+                    "dest": 53, 
+                    "deviceSn": device_sn,
+                    "params": cmd
+                }
+                
+                try:
+                    result = mqtt_client.publish(topic, json.dumps(payload), qos=1)
+                    if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                        _LOGGER.info(f"Stream Ultra deep sleep command {i+1}/13 sent (cmdSet: {cmd['cmdSet']}, cmdId: {cmd['cmdId']})")
+                    await asyncio.sleep(0.8)
+                except Exception as e:
+                    _LOGGER.debug(f"Stream Ultra deep sleep command failed: {e}")
+                    
+        except Exception as e:
+            _LOGGER.debug(f"Stream Ultra deep sleep commands error: {e}")
+
+    async def _send_standard_deep_sleep_commands(self, device_sn: str, mqtt_client):
+        """Standard EcoFlow Geräte Deep Sleep Wake-up Commands"""
+        try:
+            commands = [
+                # Standard Power Wake-up
+                {"cmdSet": 1, "cmdId": 1, "params": {"power_on": 1}},
+                {"cmdSet": 1, "cmdId": 254, "params": {"enable_all": 1}},
+                
+                # Battery System
+                {"cmdSet": 2, "cmdId": 1, "params": {"bms_enable": 1}},
+                
+                # Status Requests
+                {"cmdSet": 0, "cmdId": 1, "params": {"get_status": 1}},
+                {"cmdSet": 20, "cmdId": 1, "params": {"comm_enable": 1}},
+            ]
+            
+            for i, cmd in enumerate(commands):
+                topic = f"/app/{self.username}/{device_sn}/thing/property/set"
+                payload = {
+                    "id": self.get_next_message_id(),
+                    "version": "1.0",
+                    "timestamp": int(time.time() * 1000),
+                    "src": 32,
+                    "dest": 53, 
+                    "deviceSn": device_sn,
+                    "params": cmd
+                }
+                
+                try:
+                    result = mqtt_client.publish(topic, json.dumps(payload), qos=1)
+                    if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                        _LOGGER.info(f"Standard deep sleep command {i+1}/5 sent (cmdSet: {cmd['cmdSet']}, cmdId: {cmd['cmdId']})")
+                    await asyncio.sleep(0.6)
+                except Exception as e:
+                    _LOGGER.debug(f"Standard deep sleep command failed: {e}")
+                    
+        except Exception as e:
+            _LOGGER.debug(f"Standard deep sleep commands error: {e}")
+
+    async def send_stream_ultra_power_cycle_simulation(self):
+        """
+        Simuliert Power Cycle für Stream Ultra (An/Aus/An Sequenz)
+        """
+        try:
+            mqtt_client = self.get_ecoflow_mqtt_client()
+            if not mqtt_client:
+                return False
+                
+            _LOGGER.info("Starting Stream Ultra power cycle simulation...")
+            
+            for device_sn in self.device_sns:
+                device_type = self.detect_device_type(device_sn)
+                if not ("stream" in device_type.lower() or "ultra" in device_type.lower()):
+                    continue
+                    
+                # Power Cycle Sequenz: OFF -> Wait -> ON -> Wait -> ENABLE
+                power_cycle_sequence = [
+                    # 1. Soft Power Off
+                    {"cmdSet": 1, "cmdId": 2, "params": {"sys_power_off": 0}},
+                    # 2. Power On
+                    {"cmdSet": 1, "cmdId": 1, "params": {"sys_power_on": 1}},
+                    # 3. Enable All Systems
+                    {"cmdSet": 1, "cmdId": 254, "params": {"sys_enable_all": 1}},
+                    # 4. Enable Inverter
+                    {"cmdSet": 3, "cmdId": 1, "params": {"inv_enable": 1}},
+                    # 5. Enable Communication
+                    {"cmdSet": 20, "cmdId": 1, "params": {"comm_enable": 1}}
+                ]
+                
+                for i, cmd in enumerate(power_cycle_sequence):
+                    topic = f"/app/{self.username}/{device_sn}/thing/property/set"
+                    payload = {
+                        "id": self.get_next_message_id(),
+                        "version": "1.0",
+                        "timestamp": int(time.time() * 1000),
+                        "src": 32,
+                        "dest": 53,
+                        "deviceSn": device_sn,
+                        "params": cmd
+                    }
+                    
+                    try:
+                        result = mqtt_client.publish(topic, json.dumps(payload), qos=1)
+                        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                            _LOGGER.info(f"Stream Ultra power cycle step {i+1}/5 sent (cmdSet: {cmd['cmdSet']}, cmdId: {cmd['cmdId']})")
+                        
+                        # Spezielle Wartezeiten für Power Cycle
+                        if i == 0:  # Nach Power Off
+                            await asyncio.sleep(3)
+                        elif i == 2:  # Nach Power On
+                            await asyncio.sleep(2)
+                        else:
+                            await asyncio.sleep(1)
+                            
+                    except Exception as e:
+                        _LOGGER.debug(f"Power cycle step failed: {e}")
+                        
+            _LOGGER.info("Stream Ultra power cycle simulation completed")
+            return True
+            
+        except Exception as e:
+            _LOGGER.warning(f"Stream Ultra power cycle simulation failed: {e}")
+            return False
+
+    def get_next_message_id(self):
+        """Generiert eine eindeutige Message ID"""
+        if not hasattr(self, '_message_id_counter'):
+            self._message_id_counter = 100
+        self._message_id_counter += 1
+        return self._message_id_counter
+
     async def gentle_connection_recovery(self):
         """Sanfte Verbindungswiederherstellung ohne aggressive Disconnects"""
         try:
@@ -2551,6 +3464,8 @@ class EcoflowMqttPublisher:
                     # Prüfe ob Verbindung nun stabil ist
                     if await self.check_mqtt_connection_health(mqtt_client):
                         _LOGGER.info("Gentle recovery successful - connection restored")
+                        # Nach erfolgreicher Verbindung: Enhanced App Simulation
+                        await self.send_enhanced_app_simulation()
                         return
                         
                 except Exception as ping_error:
@@ -2578,6 +3493,10 @@ class EcoflowMqttPublisher:
                         # Setze Zeitstempel für Health Check
                         if hasattr(updated_client, '_last_msg_in'):
                             updated_client._last_msg_in = time.time()
+                        
+                        # Nach erfolgreicher Reconnection: Enhanced App Simulation
+                        await asyncio.sleep(2)  # Kurz warten für Stabilisierung
+                        await self.send_enhanced_app_simulation()
                         return
                     else:
                         _LOGGER.warning("API client restart completed but MQTT not connected")
@@ -2764,6 +3683,10 @@ class EcoflowMqttPublisher:
                         _LOGGER.warning("EcoFlow MQTT not yet connected - messages may arrive delayed")
                     else:
                         _LOGGER.info("EcoFlow MQTT fully connected and ready")
+                        # Nach erfolgreicher Verbindung: Enhanced App Simulation für initialen Datenfluss
+                        await asyncio.sleep(2)  # Kurz warten für Stabilisierung
+                        _LOGGER.info("Triggering initial enhanced app simulation...")
+                        await self.send_enhanced_app_simulation()
             
             # Nachrichten-Zähler für Debugging
             self.message_count = 0
