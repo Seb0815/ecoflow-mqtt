@@ -24,9 +24,19 @@ from custom_components.ecoflow_cloud.api.private_api import EcoflowPrivateApiCli
 from custom_components.ecoflow_cloud.api.public_api import EcoflowPublicApiClient
 from custom_components.ecoflow_cloud.device_data import DeviceData, DeviceOptions
 
-# Logging Setup
+# Logging Setup - konfigurierbar via LOG_LEVEL Umgebungsvariable
+log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
+log_level_map = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL
+}
+log_level = log_level_map.get(log_level_str, logging.INFO)
+
 logging.basicConfig(
-    level=logging.DEBUG,  # Aktiviere DEBUG-Logging
+    level=log_level,
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
@@ -278,24 +288,80 @@ class EcoflowMqttPublisher:
         _LOGGER.warning(f"MQTT connection disconnected with code: {rc}")
 
     def setup_ecoflow_message_forwarding(self):
-        """Setup Message Forwarding vom EcoFlow MQTT zum lokalen Broker"""
+        """Setup Message Forwarding vom EcoFlow MQTT zum lokalen Broker mit optimierter Keep-Alive Konfiguration"""
         if hasattr(self.api_client, 'mqtt_client') and self.api_client.mqtt_client:
             # Zugriff auf den inneren paho-mqtt Client
-            ecoflow_paho_client = None
-            if hasattr(self.api_client.mqtt_client, '_EcoflowMQTTClient__client'):
-                ecoflow_paho_client = self.api_client.mqtt_client._EcoflowMQTTClient__client
-            elif hasattr(self.api_client.mqtt_client, '__client'):
-                ecoflow_paho_client = self.api_client.mqtt_client.__client
+            ecoflow_paho_client = self.get_ecoflow_mqtt_client()
             
             if ecoflow_paho_client:
-                # Original-Callback sichern
+                # Optimiere MQTT Keep-Alive Einstellungen
+                try:
+                    # Setze robuste Keep-Alive Parameter
+                    if hasattr(ecoflow_paho_client, '_keepalive'):
+                        original_keepalive = ecoflow_paho_client._keepalive
+                        optimized_keepalive = 60  # Standard MQTT Keep-Alive (60 Sekunden)
+                        ecoflow_paho_client._keepalive = optimized_keepalive
+                        _LOGGER.info(f"MQTT Keep-Alive optimized: {original_keepalive}s → {optimized_keepalive}s")
+                    
+                    # Setze Socket-Optionen für bessere Stabilität
+                    if hasattr(ecoflow_paho_client, '_sock_keepalive'):
+                        ecoflow_paho_client._sock_keepalive = True
+                        
+                    # Setze Standard TCP Socket Keep-Alive Optionen (natürlich)
+                    try:
+                        import socket
+                        if hasattr(ecoflow_paho_client, '_sock') and ecoflow_paho_client._sock:
+                            sock = ecoflow_paho_client._sock
+                            # Aktiviere TCP Keep-Alive
+                            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                            # Setze Standard Keep-Alive Parameter (weniger aggressiv)
+                            if hasattr(socket, 'TCP_KEEPIDLE'):
+                                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 300)  # Start nach 5min (Standard)
+                            if hasattr(socket, 'TCP_KEEPINTVL'):
+                                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 75)  # Alle 75s (Standard)
+                            if hasattr(socket, 'TCP_KEEPCNT'):
+                                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 9)   # 9 Versuche (Standard)
+                            _LOGGER.info("Standard TCP Keep-Alive configured for MQTT socket")
+                    except Exception as tcp_error:
+                        _LOGGER.debug(f"TCP Keep-Alive configuration failed: {tcp_error}")
+                        
+                    # Optimiere Reconnect-Verhalten
+                    if hasattr(ecoflow_paho_client, 'reconnect_delay_set'):
+                        ecoflow_paho_client.reconnect_delay_set(min_delay=1, max_delay=30)
+                        
+                    # Wichtig: Initialisiere Message-Timestamps korrekt
+                    current_time = time.time()
+                    if hasattr(ecoflow_paho_client, '_last_msg_in'):
+                        ecoflow_paho_client._last_msg_in = current_time
+                    if hasattr(ecoflow_paho_client, '_last_msg_out'):
+                        ecoflow_paho_client._last_msg_out = current_time
+                    if hasattr(ecoflow_paho_client, '_ping_t'):
+                        ecoflow_paho_client._ping_t = 0
+                        
+                except Exception as keepalive_error:
+                    _LOGGER.debug(f"Keep-Alive optimization failed: {keepalive_error}")
+                
+                # Original-Callbacks sichern
                 original_on_message = ecoflow_paho_client.on_message
                 original_on_connect = ecoflow_paho_client.on_connect
+                original_on_disconnect = ecoflow_paho_client.on_disconnect
                 
-                # Verbindungsüberwachung hinzufügen
+                # Erweiterte Verbindungsüberwachung
                 def connection_wrapper(client, userdata, flags, rc):
                     if rc == 0:
                         _LOGGER.info("EcoFlow MQTT broker connection successfully established")
+                        # Reset reconnection counter bei erfolgreicher Verbindung
+                        if hasattr(self, 'reconnection_count'):
+                            self.reconnection_count = 0
+                        if hasattr(self, 'reconnection_in_progress'):
+                            self.reconnection_in_progress = False
+                            
+                        # Initialisiere Message-Timestamps bei neuer Verbindung
+                        current_time = time.time()
+                        if hasattr(client, '_last_msg_in'):
+                            client._last_msg_in = current_time
+                        if hasattr(client, '_last_msg_out'):
+                            client._last_msg_out = current_time
                     else:
                         _LOGGER.warning(f"EcoFlow MQTT connection failed: RC={rc}")
                     
@@ -303,24 +369,51 @@ class EcoflowMqttPublisher:
                     if original_on_connect:
                         original_on_connect(client, userdata, flags, rc)
                 
-                # Wrapper-Callback erstellen
-                def message_wrapper(client, userdata, message):
-                    # Original-Callback ausführen
-                    if original_on_message:
-                        original_on_message(client, userdata, message)
+                # Disconnect-Überwachung hinzufügen
+                def disconnect_wrapper(client, userdata, rc):
+                    if rc != 0:
+                        _LOGGER.warning(f"🔌 EcoFlow MQTT unexpected disconnect: RC={rc}")
+                        # Sanfte Wiederherstellung bei unerwarteter Trennung - threading-sicher
+                        if not getattr(self, 'reconnection_in_progress', False):
+                            self.schedule_connection_recovery()
+                    else:
+                        _LOGGER.info("EcoFlow MQTT cleanly disconnected")
                     
-                    # Unsere eigene Verarbeitung
-                    self.on_ecoflow_message(client, userdata, message)
+                    # Original-Callback ausführen
+                    if original_on_disconnect:
+                        original_on_disconnect(client, userdata, rc)
+                
+                # Message-Wrapper mit verbesserter Fehlerbehandlung
+                def message_wrapper(client, userdata, message):
+                    try:
+                        # Aktualisiere Message-Timestamps für Health-Check
+                        current_time = time.time()
+                        if hasattr(client, '_last_msg_in'):
+                            client._last_msg_in = current_time
+                        
+                        # Original-Callback ausführen
+                        if original_on_message:
+                            original_on_message(client, userdata, message)
+                        
+                        # Unsere eigene Verarbeitung
+                        self.on_ecoflow_message(client, userdata, message)
+                        
+                    except Exception as msg_error:
+                        _LOGGER.error(f"Message processing error: {msg_error}")
+                        # Weiter verarbeiten trotz Fehler
                 
                 # Wrapper setzen
                 ecoflow_paho_client.on_message = message_wrapper
                 ecoflow_paho_client.on_connect = connection_wrapper
-                _LOGGER.info("EcoFlow MQTT message handler successfully set")
+                ecoflow_paho_client.on_disconnect = disconnect_wrapper
+                _LOGGER.info("EcoFlow MQTT message handlers successfully configured")
                 
                 # Debug: MQTT-Client Status überprüfen (initial)
                 _LOGGER.info(f"EcoFlow MQTT Client initial status: Connected={ecoflow_paho_client.is_connected()}")
                 if hasattr(ecoflow_paho_client, '_host'):
                     _LOGGER.info(f"EcoFlow MQTT Client host: {ecoflow_paho_client._host}")
+                if hasattr(ecoflow_paho_client, '_keepalive'):
+                    _LOGGER.info(f"EcoFlow MQTT Keep-Alive interval: {ecoflow_paho_client._keepalive}s")
                 
                 # Timeout-basierte Reconnection setup (wie ioBroker)
                 self.setup_message_timeout_monitoring()
@@ -328,19 +421,92 @@ class EcoflowMqttPublisher:
             else:
                 _LOGGER.warning("Could not access EcoFlow paho-mqtt client")
         else:
+            _LOGGER.warning("EcoFlow MQTT client not available for setup")
             _LOGGER.warning("EcoFlow MQTT client not available")
 
     def setup_message_timeout_monitoring(self):
         """
-        Setup timeout-based monitoring wie in ioBroker implementation
-        Automatische Reconnection wenn keine Nachrichten empfangen werden
+        Robustes timeout-basiertes Monitoring mit intelligenter Reconnection
         """
         self.last_message_time = time.time()
         self.message_timeout_timer = None
-        self.message_timeout_interval = 600  # 10 Minuten wie in ioBroker
+        self.message_timeout_interval = 900  # 15 Minuten (erhöht von 10 Min für Stabilität)
+        self.reconnection_in_progress = False
         
         # Starte initial timeout
         self.reset_message_timeout()
+        
+    def schedule_connection_recovery(self):
+        """Threading-sichere Planung der Connection Recovery"""
+        try:
+            # Setze Flag, um mehrfache Versuche zu vermeiden
+            if getattr(self, 'reconnection_in_progress', False):
+                _LOGGER.debug("Reconnection already in progress - skipping")
+                return
+                
+            # Threading-sichere Methode: Nutze Timer für delayed execution in main thread
+            import threading
+            
+            def delayed_recovery():
+                try:
+                    # Prüfe ob eine Event Loop läuft
+                    try:
+                        loop = asyncio.get_running_loop()
+                        if loop and not loop.is_closed():
+                            # Nutze thread-safe call_soon_threadsafe
+                            loop.call_soon_threadsafe(
+                                lambda: asyncio.create_task(self.gentle_connection_recovery())
+                            )
+                            _LOGGER.info("Connection recovery scheduled via event loop")
+                        else:
+                            _LOGGER.warning("No active event loop for recovery scheduling")
+                    except RuntimeError:
+                        # Keine Event Loop verfügbar - nutze synchrone Fallback-Methode
+                        _LOGGER.info("No event loop available - using sync recovery fallback")
+                        self.sync_connection_recovery()
+                        
+                except Exception as recovery_error:
+                    _LOGGER.error(f"Failed to schedule connection recovery: {recovery_error}")
+                    
+            # Starte delayed recovery in separatem Thread nach kurzer Verzögerung
+            recovery_timer = threading.Timer(2.0, delayed_recovery)
+            recovery_timer.daemon = True  # Daemon Thread, damit er das Programm nicht blockiert
+            recovery_timer.start()
+            
+        except Exception as e:
+            _LOGGER.error(f"Error in schedule_connection_recovery: {e}")
+    
+    def sync_connection_recovery(self):
+        """Synchrone Fallback-Methode für Connection Recovery ohne Event Loop"""
+        try:
+            _LOGGER.info("🔧 Starting sync connection recovery...")
+            self.reconnection_in_progress = True
+            
+            mqtt_client = self.get_ecoflow_mqtt_client()
+            if not mqtt_client:
+                _LOGGER.warning("No MQTT client available for sync recovery")
+                return
+                
+            # Einfache Reconnection-Strategie
+            try:
+                if hasattr(mqtt_client, 'reconnect'):
+                    _LOGGER.info("Attempting MQTT reconnect...")
+                    mqtt_client.reconnect()
+                    import time
+                    time.sleep(3)  # Kurz warten
+                    
+                    if mqtt_client.is_connected():
+                        _LOGGER.info("Sync MQTT reconnect successful")
+                    else:
+                        _LOGGER.warning("Sync MQTT reconnect completed but not connected")
+                        
+            except Exception as reconnect_error:
+                _LOGGER.error(f"Sync MQTT reconnect failed: {reconnect_error}")
+                
+        except Exception as e:
+            _LOGGER.error(f"Sync connection recovery failed: {e}")
+        finally:
+            self.reconnection_in_progress = False
         
     def reset_message_timeout(self):
         """Reset message timeout timer nach jeder empfangenen Nachricht"""
@@ -364,33 +530,46 @@ class EcoflowMqttPublisher:
             
     def handle_message_timeout(self):
         """
-        Handle message timeout - führt Reconnection durch
-        Wird aufgerufen wenn keine Nachrichten in timeout_interval empfangen wurden
+        Intelligente Timeout-Behandlung mit gestufter Wiederherstellung
         """
         try:
-            _LOGGER.warning(f"🚨 No messages received in {self.message_timeout_interval}s - triggering reconnection")
+            # Verhindere parallele Reconnection-Versuche
+            if getattr(self, 'reconnection_in_progress', False):
+                _LOGGER.debug("Reconnection already in progress - skipping timeout handling")
+                self.reset_message_timeout()
+                return
+                
+            _LOGGER.warning(f"No messages received in {self.message_timeout_interval}s - analyzing connection")
             
             # Reconnection counter erhöhen
             if not hasattr(self, 'reconnection_count'):
                 self.reconnection_count = 0
             self.reconnection_count += 1
             
-            # MQTT Reconnection versuchen
-            self.trigger_mqtt_reconnection()
+            # Verbindungsstatus analysieren
+            connection_analysis = self.analyze_connection_status()
+            
+            # Gestufte Wiederherstellung basierend auf Analyse
+            if connection_analysis['needs_recovery']:
+                # Threading-sichere Planung der Recovery
+                self.schedule_intelligent_recovery(connection_analysis)
+            else:
+                _LOGGER.info("Connection appears healthy despite timeout - resetting timer")
             
             # Statistik publizieren
             if self.mqtt_client:
-                reconnection_status = {
-                    'reconnection_triggered': True,
+                timeout_status = {
+                    'timeout_triggered': True,
                     'reconnection_count': self.reconnection_count,
                     'last_message_time': self.last_message_time,
                     'timeout_interval': self.message_timeout_interval,
+                    'connection_analysis': connection_analysis,
                     'timestamp': time.time()
                 }
                 
                 self.mqtt_client.publish(
-                    f"{self.mqtt_base_topic}/reconnection_status", 
-                    json.dumps(reconnection_status), 
+                    f"{self.mqtt_base_topic}/timeout_status", 
+                    json.dumps(timeout_status), 
                     retain=True
                 )
             
@@ -400,50 +579,207 @@ class EcoflowMqttPublisher:
         except Exception as e:
             _LOGGER.error(f"Error handling message timeout: {e}")
             
-    def trigger_mqtt_reconnection(self):
-        """
-        Führt MQTT Reconnection durch (wie ioBroker implementation)
-        """
+    def analyze_connection_status(self):
+        """Analysiert den aktuellen Verbindungsstatus für intelligente Wiederherstellung"""
+        analysis = {
+            'mqtt_connected': False,
+            'mqtt_healthy': False,
+            'api_client_available': False,
+            'needs_recovery': False,
+            'recovery_level': 'none'
+        }
+        
         try:
-            if hasattr(self.api_client, 'mqtt_client') and self.api_client.mqtt_client:
-                mqtt_client = None
+            # API Client Status
+            analysis['api_client_available'] = bool(self.api_client)
+            
+            # MQTT Client Status
+            mqtt_client = self.get_ecoflow_mqtt_client()
+            if mqtt_client:
+                analysis['mqtt_connected'] = mqtt_client.is_connected()
                 
-                # MQTT Client finden
-                if hasattr(self.api_client.mqtt_client, '_EcoflowMQTTClient__client'):
-                    mqtt_client = self.api_client.mqtt_client._EcoflowMQTTClient__client
-                elif hasattr(self.api_client.mqtt_client, '__client'):
-                    mqtt_client = self.api_client.mqtt_client.__client
-                
-                if mqtt_client:
-                    _LOGGER.info("Triggering MQTT reconnection...")
-                    
-                    # Disconnect und reconnect
+                # Erweiterte Gesundheitsprüfung
+                if analysis['mqtt_connected']:
                     try:
-                        mqtt_client.disconnect()
-                        time.sleep(2)  # Kurz warten
-                        mqtt_client.reconnect()
-                        _LOGGER.info("✅ MQTT reconnection initiated")
-                    except Exception as reconnect_error:
-                        _LOGGER.error(f"❌ MQTT reconnection failed: {reconnect_error}")
-                        
-                        # Fallback: Komplette API Client reconnection
-                        try:
-                            _LOGGER.info("Trying complete API client reconnection...")
-                            if hasattr(self.api_client, 'stop'):
-                                self.api_client.stop()
-                            time.sleep(5)
-                            # API Client würde hier neu initialisiert werden
-                            # Das müsste in setup_api_client implementiert werden
-                            _LOGGER.info("✅ Complete reconnection attempt finished")
-                        except Exception as full_reconnect_error:
-                            _LOGGER.error(f"❌ Complete reconnection failed: {full_reconnect_error}")
-                else:
-                    _LOGGER.error("❌ Could not find MQTT client for reconnection")
+                        # Prüfe letzte Nachricht
+                        if hasattr(mqtt_client, '_last_msg_in'):
+                            msg_age = time.time() - mqtt_client._last_msg_in
+                            analysis['mqtt_healthy'] = msg_age < 1800  # 30 Minuten
+                        else:
+                            analysis['mqtt_healthy'] = True  # Fallback
+                    except:
+                        analysis['mqtt_healthy'] = analysis['mqtt_connected']
+            
+            # Bestimme Wiederherstellungslevel
+            if not analysis['api_client_available']:
+                analysis['needs_recovery'] = True
+                analysis['recovery_level'] = 'full_restart'
+            elif not analysis['mqtt_connected']:
+                analysis['needs_recovery'] = True
+                analysis['recovery_level'] = 'mqtt_reconnect'
+            elif not analysis['mqtt_healthy']:
+                analysis['needs_recovery'] = True
+                analysis['recovery_level'] = 'gentle_recovery'
             else:
-                _LOGGER.error("❌ EcoFlow MQTT client not available for reconnection")
+                # Verbindung scheint OK - möglicherweise nur temporärer Datenmangel
+                analysis['needs_recovery'] = False
+                analysis['recovery_level'] = 'none'
                 
         except Exception as e:
-            _LOGGER.error(f"❌ Error triggering MQTT reconnection: {e}")
+            _LOGGER.debug(f"Connection analysis error: {e}")
+            analysis['needs_recovery'] = True
+            analysis['recovery_level'] = 'gentle_recovery'
+            
+        return analysis
+
+    def schedule_intelligent_recovery(self, analysis):
+        """Threading-sichere Planung der intelligenten Connection Recovery"""
+        try:
+            recovery_level = analysis.get('recovery_level', 'gentle_recovery')
+            _LOGGER.info(f"Scheduling {recovery_level} connection recovery...")
+            
+            # Verhindere mehrfache Versuche
+            if getattr(self, 'reconnection_in_progress', False):
+                _LOGGER.debug("Reconnection already in progress - skipping intelligent recovery")
+                return
+                
+            import threading
+            
+            def delayed_intelligent_recovery():
+                try:
+                    # Prüfe ob eine Event Loop läuft
+                    try:
+                        loop = asyncio.get_running_loop()
+                        if loop and not loop.is_closed():
+                            # Nutze thread-safe call_soon_threadsafe
+                            loop.call_soon_threadsafe(
+                                lambda: asyncio.create_task(self.intelligent_connection_recovery(analysis))
+                            )
+                            _LOGGER.info("Intelligent recovery scheduled via event loop")
+                        else:
+                            _LOGGER.warning("No active event loop for intelligent recovery")
+                    except RuntimeError:
+                        # Keine Event Loop verfügbar - nutze synchrone Fallback-Methode
+                        _LOGGER.info("No event loop available - using sync recovery fallback")
+                        self.sync_intelligent_recovery(analysis)
+                        
+                except Exception as recovery_error:
+                    _LOGGER.error(f"Failed to schedule intelligent recovery: {recovery_error}")
+                    
+            # Starte delayed recovery in separatem Thread nach kurzer Verzögerung
+            recovery_timer = threading.Timer(1.0, delayed_intelligent_recovery)
+            recovery_timer.daemon = True
+            recovery_timer.start()
+            
+        except Exception as e:
+            _LOGGER.error(f"Error in schedule_intelligent_recovery: {e}")
+    
+    def sync_intelligent_recovery(self, analysis):
+        """Synchrone Fallback-Methode für intelligente Recovery ohne Event Loop"""
+        try:
+            recovery_level = analysis.get('recovery_level', 'gentle_recovery')
+            _LOGGER.info(f"🔧 Starting sync {recovery_level} recovery...")
+            self.reconnection_in_progress = True
+            
+            if recovery_level == 'gentle_recovery':
+                self.sync_connection_recovery()
+            elif recovery_level in ['mqtt_reconnect', 'full_restart']:
+                # Für komplexere Recovery-Level auch sync fallback
+                self.sync_connection_recovery()
+                
+            _LOGGER.info(f"Sync {recovery_level} recovery completed")
+            
+        except Exception as e:
+            _LOGGER.error(f"Sync intelligent recovery failed: {e}")
+        finally:
+            self.reconnection_in_progress = False
+
+    async def intelligent_connection_recovery(self, analysis):
+        """Gestufte Verbindungswiederherstellung basierend auf Problemanalyse"""
+        try:
+            self.reconnection_in_progress = True
+            recovery_level = analysis.get('recovery_level', 'gentle_recovery')
+            
+            _LOGGER.info(f"Starting {recovery_level} connection recovery...")
+            
+            if recovery_level == 'gentle_recovery':
+                # Sanfte Wiederherstellung
+                await self.gentle_connection_recovery()
+                
+            elif recovery_level == 'mqtt_reconnect':
+                # MQTT-spezifische Wiederherstellung
+                await self.mqtt_specific_recovery()
+                
+            elif recovery_level == 'full_restart':
+                # Vollständiger API Client Neustart
+                await self.full_api_client_restart()
+                
+            _LOGGER.info(f"{recovery_level} recovery completed")
+            
+        except Exception as e:
+            _LOGGER.error(f"Connection recovery failed: {e}")
+        finally:
+            self.reconnection_in_progress = False
+
+    async def mqtt_specific_recovery(self):
+        """MQTT-spezifische Wiederherstellung ohne API Client Neustart"""
+        try:
+            mqtt_client = self.get_ecoflow_mqtt_client()
+            if not mqtt_client:
+                raise Exception("No MQTT client available")
+                
+            _LOGGER.info("Attempting MQTT-specific recovery...")
+            
+            # Versuche sanften Reconnect
+            try:
+                if hasattr(mqtt_client, 'reconnect'):
+                    mqtt_client.reconnect()
+                    await asyncio.sleep(5)  # Warten auf Verbindung
+                    
+                    if mqtt_client.is_connected():
+                        _LOGGER.info("MQTT reconnect successful")
+                        return
+                        
+            except Exception as reconnect_error:
+                _LOGGER.debug(f"MQTT reconnect failed: {reconnect_error}")
+            
+            # Fallback: API Client MQTT restart
+            if hasattr(self.api_client, 'stop') and hasattr(self.api_client, 'start'):
+                _LOGGER.info("Attempting API client MQTT restart...")
+                self.api_client.stop()
+                await asyncio.sleep(3)
+                
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, self.api_client.start)
+                _LOGGER.info("API client MQTT restart completed")
+                
+        except Exception as e:
+            _LOGGER.error(f"MQTT-specific recovery failed: {e}")
+            raise
+
+    async def full_api_client_restart(self):
+        """Vollständiger API Client Neustart als letzte Option"""
+        try:
+            _LOGGER.info("Performing full API client restart...")
+            
+            # Stoppe alten Client
+            if self.api_client and hasattr(self.api_client, 'stop'):
+                self.api_client.stop()
+                self.api_client = None
+                
+            await asyncio.sleep(5)  # Cooldown-Periode
+            
+            # Starte neuen Client
+            await self.setup_api_client()
+            
+            # Message Forwarding neu setup
+            self.setup_ecoflow_message_forwarding()
+            
+            _LOGGER.info("Full API client restart completed")
+            
+        except Exception as e:
+            _LOGGER.error(f"Full API client restart failed: {e}")
+            raise
 
     def on_ecoflow_message(self, client, userdata, message):
         """Callback für EcoFlow MQTT-Nachrichten - nutzt Device-Klassen für Dekodierung"""
@@ -1665,7 +2001,7 @@ class EcoflowMqttPublisher:
                     result[f"int32_param_{param_count}"] = value
                     param_count += 1
             
-            # Spezielle Stream Ultra Patterns
+            # Spezielle Hex-Patterns für EcoFlow Geräte
             if len(payload) >= 20:
                 # Suche nach typischen Stream-Sequenzen
                 if b'\x08\x10' in payload or b'\x10\x18' in payload:
@@ -1933,8 +2269,8 @@ class EcoflowMqttPublisher:
 
     async def send_keep_alive_messages(self):
         """
-        Erweiterte Keep-Alive Implementierung basierend auf ioBroker.ecoflow-mqtt
-        Sendet regelmäßige Quota-Anfragen und überwacht Verbindungsstatus
+        Verstärkte Keep-Alive Implementierung mit mehrschichtigen Aktivitätssignalen
+        Kombiniert API-, MQTT- und Anwendungsebene Keep-Alive für maximale Stabilität
         """
         if not self.api_client:
             _LOGGER.warning("API Client not available for keep-alive")
@@ -1943,147 +2279,454 @@ class EcoflowMqttPublisher:
         try:
             keep_alive_success = False
             
-            # 1. Quota-Anfragen für alle Geräte (wie ioBroker Implementation)
+            # 1. API-Level Keep-Alive: Quota-Anfragen (primärer Mechanismus)
             try:
                 if hasattr(self.api_client, 'quota_all'):
                     await self.api_client.quota_all(None)
                     keep_alive_success = True
-                    _LOGGER.debug("quota_all Keep-Alive sent")
+                    _LOGGER.debug("quota_all Keep-Alive sent successfully")
                     
-                # Zusätzlich: Einzelne Geräte-Quotas abrufen
+                # Zusätzliche Device-spezifische Quota-Anfragen für Activity-Signal
                 for device_sn in self.device_sns:
                     try:
-                        # Protobuf Quota anfragen (für PowerStream, Delta, River etc.)
                         if hasattr(self.api_client, 'get_device_quota'):
                             await self.api_client.get_device_quota(device_sn)
-                        
-                        # JSON Quota anfragen (für andere Geräte)  
-                        if hasattr(self.api_client, 'get_device_info'):
+                        elif hasattr(self.api_client, 'get_device_info'):
                             await self.api_client.get_device_info(device_sn)
-                            
                     except Exception as device_error:
-                        _LOGGER.debug(f"Device-specific quota failed for {device_sn}: {device_error}")
+                        _LOGGER.debug(f"Device quota failed for {device_sn}: {device_error}")
                         continue
                         
             except Exception as quota_error:
-                _LOGGER.debug(f"Quota keep-alive failed: {quota_error}")
+                _LOGGER.warning(f"API-level keep-alive failed: {quota_error}")
             
-            # 2. MQTT-Level Keep-Alive simulieren (wie echte App)
+            # 2. MQTT-Level Keep-Alive: Verstärkte Stream Ultra-spezifische Aktivität
             try:
-                if hasattr(self.api_client, 'mqtt_client') and self.api_client.mqtt_client:
-                    # Sende Ping-ähnliche Nachrichten für jedes Gerät
+                mqtt_client = self.get_ecoflow_mqtt_client()
+                if mqtt_client and mqtt_client.is_connected():
+                    # Stream Ultra spezifische Keep-Alive Nachrichten
                     for device_sn in self.device_sns:
                         try:
-                            # Simuliere App-Keep-Alive mit heartbeat message
-                            heartbeat_topic = f"/app/{self.username}/{device_sn}/thing/property/heartbeat"
-                            heartbeat_payload = {
-                                "id": 40,  # Heartbeat ID (wie in ioBroker gesehen)
+                            device_type = self.detect_device_type(device_sn)
+                            current_time = int(time.time() * 1000)
+                            
+                            if device_type in ["STREAM_ULTRA", "STREAM_AC", "STREAM_PRO"]:
+                                # Stream Ultra optimierte Keep-Alive mit besserer Antwortrate
+                                
+                                # 1. Quota-Anfrage mit Stream-spezifischen Parametern
+                                quota_topic = f"/app/device/quota/{device_sn}"
+                                quota_payload = {
+                                    "id": current_time % 10000,  # Eindeutige ID
+                                    "version": "1.0",
+                                    "params": {
+                                        "typeMap": 1,
+                                        "quotaMap": 1
+                                    },
+                                    "timestamp": current_time
+                                }
+                                result1 = mqtt_client.publish(quota_topic, json.dumps(quota_payload), qos=1)
+                                
+                                # 2. Stream Ultra optimierte Property-Get mit allen wichtigen Parametern
+                                get_topic = f"/app/device/property/{device_sn}/get"
+                                get_payload = {
+                                    "id": (current_time + 1) % 10000,
+                                    "version": "1.0",
+                                    "params": {
+                                        "quotaMap": 1,
+                                        "streamData": 1,
+                                        "batteryData": 1,
+                                        "invData": 1,     # Inverter-Daten
+                                        "statusData": 1,  # Status-Daten
+                                        "realTimeData": 1 # Echtzeit-Daten
+                                    },
+                                    "timestamp": current_time
+                                }
+                                result2 = mqtt_client.publish(get_topic, json.dumps(get_payload), qos=1)
+                                
+                                # 3. Stream Ultra Thing-Property mit korrektem cmdSet
+                                thing_topic = f"/app/{getattr(self, 'username', 'user')}/{device_sn}/thing/property/get"
+                                thing_payload = {
+                                    "id": (current_time + 2) % 10000,
+                                    "version": "1.0",
+                                    "params": {
+                                        "cmdSet": 3,    # Korrektes Stream Ultra cmdSet
+                                        "cmdId": 254,   # All-Status Command
+                                        "dataType": 0   # Standard Datentyp
+                                    },
+                                    "timestamp": current_time
+                                }
+                                result3 = mqtt_client.publish(thing_topic, json.dumps(thing_payload), qos=1)
+                                
+                                success_count = sum([r.rc == mqtt.MQTT_ERR_SUCCESS for r in [result1, result2, result3]])
+                                _LOGGER.debug(f"Enhanced MQTT keep-alive sent for {device_sn} ({success_count}/3 messages)")
+                                
+                                # 4. Zusätzliche Stream Ultra-spezifische Wakeup-Nachricht
+                                if success_count >= 2:  # Nur wenn andere Nachrichten erfolgreich waren
+                                    wakeup_topic = f"/app/{getattr(self, 'username', 'user')}/{device_sn}/thing/property/set"
+                                    wakeup_payload = {
+                                        "id": (current_time + 3) % 10000,
+                                        "version": "1.0",
+                                        "params": {
+                                            "cmdSet": 21,     # Stream Ultra Status Command Set
+                                            "cmdId": 254,     # All Status Command
+                                            "dataType": 1
+                                        },
+                                        "timestamp": current_time
+                                    }
+                                    result4 = mqtt_client.publish(wakeup_topic, json.dumps(wakeup_payload), qos=1)
+                                    if result4.rc == mqtt.MQTT_ERR_SUCCESS:
+                                        _LOGGER.debug(f"Stream Ultra wakeup message sent for {device_sn}")
+                                        success_count += 1
+                                
+                            else:
+                                # Standard Keep-Alive für andere Geräte
+                                quota_topic = f"/app/device/quota/{device_sn}"
+                                quota_payload = {
+                                    "id": 999,
+                                    "version": "1.0",
+                                    "params": {},
+                                    "timestamp": current_time
+                                }
+                                result1 = mqtt_client.publish(quota_topic, json.dumps(quota_payload), qos=1)
+                                
+                                get_topic = f"/app/device/property/{device_sn}/get"
+                                get_payload = {
+                                    "id": 1000,
+                                    "version": "1.0",
+                                    "params": {"quotaMap": 1},
+                                    "timestamp": current_time
+                                }
+                                result2 = mqtt_client.publish(get_topic, json.dumps(get_payload), qos=1)
+                                
+                                success_count = sum([r.rc == mqtt.MQTT_ERR_SUCCESS for r in [result1, result2]])
+                                _LOGGER.debug(f"Standard MQTT keep-alive sent for {device_sn} ({success_count}/2 messages)")
+                            
+                            # 3. Spezielle Geräteaktivierung (falls nötig)
+                            stream_topic = f"/app/{self.username}/{device_sn}/thing/property/get"
+                            stream_payload = {
+                                "id": 1001,
                                 "version": "1.0",
+                                "params": {"cmdSet": 20, "cmdId": 1},  # Stream-spezifische IDs
                                 "timestamp": int(time.time() * 1000)
                             }
                             
-                            # Prüfe ob MQTT Client verfügbar
-                            mqtt_client = None
-                            if hasattr(self.api_client.mqtt_client, '_EcoflowMQTTClient__client'):
-                                mqtt_client = self.api_client.mqtt_client._EcoflowMQTTClient__client
-                            elif hasattr(self.api_client.mqtt_client, '__client'):
-                                mqtt_client = self.api_client.mqtt_client.__client
+                            result3 = mqtt_client.publish(stream_topic, json.dumps(stream_payload), qos=1)
                             
-                            if mqtt_client and mqtt_client.is_connected():
-                                mqtt_client.publish(
-                                    heartbeat_topic, 
-                                    json.dumps(heartbeat_payload),
-                                    qos=1
-                                )
+                            if all(r.rc == mqtt.MQTT_ERR_SUCCESS for r in [result1, result2, result3]):
                                 keep_alive_success = True
-                                _LOGGER.debug(f"Heartbeat sent for {device_sn}")
+                                _LOGGER.debug(f"Enhanced MQTT keep-alive sent for {device_sn} (3 messages)")
                             else:
-                                _LOGGER.warning(f"MQTT not connected for heartbeat to {device_sn}")
+                                _LOGGER.debug(f"Some MQTT keep-alive messages failed for {device_sn}")
                                 
                         except Exception as heartbeat_error:
-                            _LOGGER.debug(f"Heartbeat failed for {device_sn}: {heartbeat_error}")
+                            _LOGGER.debug(f"Enhanced heartbeat failed for {device_sn}: {heartbeat_error}")
                             continue
-                            
-            except Exception as mqtt_error:
-                _LOGGER.debug(f"MQTT keep-alive failed: {mqtt_error}")
-            
-            # 3. Verbindungsstatus prüfen und bei Bedarf reconnect
-            try:
-                if hasattr(self.api_client, 'mqtt_client') and self.api_client.mqtt_client:
-                    mqtt_client = None
-                    if hasattr(self.api_client.mqtt_client, '_EcoflowMQTTClient__client'):
-                        mqtt_client = self.api_client.mqtt_client._EcoflowMQTTClient__client
-                    elif hasattr(self.api_client.mqtt_client, '__client'):
-                        mqtt_client = self.api_client.mqtt_client.__client
                     
-                    if mqtt_client:
-                        if not mqtt_client.is_connected():
-                            _LOGGER.warning("MQTT connection lost, attempting reconnect")
-                            try:
-                                mqtt_client.reconnect()
-                                keep_alive_success = True
-                            except Exception as reconnect_error:
-                                _LOGGER.error(f"MQTT reconnect failed: {reconnect_error}")
-                        else:
-                            _LOGGER.debug("MQTT connection healthy")
-                            
-            except Exception as connection_error:
-                _LOGGER.debug(f"Connection check failed: {connection_error}")
+                    # 4. MQTT-Level Ping für Socket-Keep-Alive
+                    try:
+                        if hasattr(mqtt_client, 'ping'):
+                            mqtt_client.ping()
+                            _LOGGER.debug("MQTT ping sent for socket maintenance")
+                            keep_alive_success = True
+                    except Exception as ping_error:
+                        _LOGGER.debug(f"MQTT ping failed: {ping_error}")
+                else:
+                    _LOGGER.warning("MQTT client not available or not connected")
+                        
+            except Exception as mqtt_error:
+                _LOGGER.warning(f"MQTT-level keep-alive failed: {mqtt_error}")
             
             # Status-Log
             if keep_alive_success:
-                _LOGGER.info(f"Keep-Alive successful for {len(self.device_sns)} devices")
+                _LOGGER.info(f"Enhanced Keep-Alive successful for {len(self.device_sns)} devices")
             else:
-                _LOGGER.warning(f"Keep-Alive failed - no successful method")
+                _LOGGER.warning("Keep-Alive failed - triggering connection recovery")
+                # Sanfte Verbindungswiederherstellung statt aggressiven Reconnect
+                await self.gentle_connection_recovery()
                 
         except Exception as e:
             _LOGGER.error(f"Keep-Alive system error: {e}")
             _LOGGER.error(f"Full traceback: {traceback.format_exc()}")
 
+    def get_ecoflow_mqtt_client(self):
+        """Holt den EcoFlow MQTT Client mit robuster Fehlerbehandlung"""
+        try:
+            if not (hasattr(self.api_client, 'mqtt_client') and self.api_client.mqtt_client):
+                return None
+                
+            # Versuche verschiedene Zugriffsmethoden
+            for attr_name in ['_EcoflowMQTTClient__client', '__client', 'client']:
+                if hasattr(self.api_client.mqtt_client, attr_name):
+                    client = getattr(self.api_client.mqtt_client, attr_name)
+                    if client and hasattr(client, 'is_connected'):
+                        return client
+                        
+            return None
+        except Exception as e:
+            _LOGGER.debug(f"Error accessing MQTT client: {e}")
+            return None
+
+    async def check_mqtt_connection_health(self, mqtt_client):
+        """Erweiterte MQTT-Verbindungsprüfung mit Reconnect-freundlicher Logik"""
+        try:
+            if not mqtt_client:
+                _LOGGER.debug("No MQTT client available")
+                return False
+                
+            # Basis-Verbindungsprüfung
+            if not mqtt_client.is_connected():
+                _LOGGER.debug("MQTT client reports disconnected")
+                return False
+            
+            # Nach Reconnect ist die Verbindung erstmal als gesund zu betrachten
+            _LOGGER.debug("MQTT client reports connected - connection healthy")
+            
+            # Erweiterte Gesundheitsprüfung nur wenn schon länger verbunden
+            try:
+                # Prüfe ob Client noch responsive ist
+                if hasattr(mqtt_client, '_sock') and mqtt_client._sock:
+                    # Socket ist verfügbar - das ist ein gutes Zeichen
+                    _LOGGER.debug("MQTT socket available and active")
+                    
+                    if hasattr(mqtt_client, '_last_msg_in'):
+                        # Korrekte Zeitstempel-Berechnung
+                        current_time = time.time()
+                        last_msg_time = mqtt_client._last_msg_in
+                        
+                        # Prüfe ob _last_msg_in sinnvoll ist (Unix timestamp)
+                        if last_msg_time > 1000000000:  # Nach 2001 (sinnvoller Unix timestamp)
+                            last_msg_age = current_time - last_msg_time
+                            # Sehr tolerant nach Reconnect: 20 Minuten statt 15
+                            if last_msg_age > 1200:  # 20 Minuten ohne Nachrichten
+                                _LOGGER.debug(f"No messages received for {last_msg_age:.1f}s - connection may be stale")
+                                return False
+                            else:
+                                _LOGGER.debug(f"Last message received {last_msg_age:.1f}s ago - connection healthy")
+                        else:
+                            # _last_msg_in ist nicht initialisiert oder fehlerhaft
+                            _LOGGER.debug("_last_msg_in not properly initialized - assuming healthy for connected client")
+                            # Setze current time als Fallback
+                            mqtt_client._last_msg_in = current_time
+                    else:
+                        _LOGGER.debug("MQTT client has no _last_msg_in attribute - assuming healthy for connected client")
+                        # Setze aktuellen Zeitstempel
+                        mqtt_client._last_msg_in = time.time()
+                else:
+                    _LOGGER.debug("MQTT client socket not available but client reports connected - assuming healthy")
+                    # Wenn Socket nicht verfügbar ist aber Client meldet "connected", geben wir trotzdem OK
+                    
+            except Exception as health_error:
+                _LOGGER.debug(f"Extended health check failed: {health_error}")
+                # Fallback: Wenn erweiterte Prüfung fehlschlägt aber is_connected() True ist,
+                # dann ist die Verbindung wahrscheinlich in Ordnung
+                _LOGGER.debug("Falling back to basic connection check - client reports connected")
+                
+            return True  # Wenn is_connected() True ist, ist die Verbindung gesund
+            
+        except Exception as e:
+            _LOGGER.debug(f"Connection health check error: {e}")
+            return False
+
+    async def gentle_connection_recovery(self):
+        """Sanfte Verbindungswiederherstellung ohne aggressive Disconnects"""
+        try:
+            _LOGGER.info("Initiating gentle connection recovery...")
+            
+            mqtt_client = self.get_ecoflow_mqtt_client()
+            if not mqtt_client:
+                _LOGGER.warning("No MQTT client available for recovery")
+                return
+                
+            # Prüfe aktuelle Verbindung
+            if mqtt_client.is_connected():
+                # Versuche sanfte Wiederherstellung über Ping
+                try:
+                    if hasattr(mqtt_client, 'ping'):
+                        mqtt_client.ping()
+                        _LOGGER.info("MQTT ping sent for connection recovery")
+                    
+                    # Kurz warten für Antwort
+                    await asyncio.sleep(2)
+                    
+                    # Prüfe ob Verbindung nun stabil ist
+                    if await self.check_mqtt_connection_health(mqtt_client):
+                        _LOGGER.info("Gentle recovery successful - connection restored")
+                        return
+                        
+                except Exception as ping_error:
+                    _LOGGER.debug(f"MQTT ping failed: {ping_error}")
+            
+            # Falls sanfte Methode fehlschlägt, versuche Neuverbindung über API Client
+            _LOGGER.info("Attempting API client restart...")
+            try:
+                if hasattr(self.api_client, 'stop'):
+                    self.api_client.stop()
+                    await asyncio.sleep(3)
+                    
+                if hasattr(self.api_client, 'start'):
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, self.api_client.start)
+                    _LOGGER.info("API client restart completed")
+                    
+                    # Warte kurz und prüfe ob Reconnect erfolgreich war
+                    await asyncio.sleep(5)
+                    
+                    # Prüfe finale Verbindung
+                    updated_client = self.get_ecoflow_mqtt_client()
+                    if updated_client and updated_client.is_connected():
+                        _LOGGER.info("API client restart successful - MQTT reconnected")
+                        # Setze Zeitstempel für Health Check
+                        if hasattr(updated_client, '_last_msg_in'):
+                            updated_client._last_msg_in = time.time()
+                        return
+                    else:
+                        _LOGGER.warning("API client restart completed but MQTT not connected")
+                    
+            except Exception as restart_error:
+                _LOGGER.error(f"API client restart failed: {restart_error}")
+                
+        except Exception as e:
+            _LOGGER.error(f"Gentle connection recovery failed: {e}")
+
     async def send_heartbeat_messages(self):
         """
-        Sendet regelmäßige Heartbeat-Nachrichten (simuliert App-Aktivität)
-        Basierend auf ioBroker implementation - häufigere, kleinere Keep-Alive Signale
+        Natürliche Heartbeat-Nachrichten wie echte EcoFlow App
+        Rotiert zwischen verschiedenen Message-Typen statt alle gleichzeitig zu senden
         """
         if not self.api_client:
             return
             
         try:
-            if hasattr(self.api_client, 'mqtt_client') and self.api_client.mqtt_client:
-                # MQTT Client finden
-                mqtt_client = None
-                if hasattr(self.api_client.mqtt_client, '_EcoflowMQTTClient__client'):
-                    mqtt_client = self.api_client.mqtt_client._EcoflowMQTTClient__client
-                elif hasattr(self.api_client.mqtt_client, '__client'):
-                    mqtt_client = self.api_client.mqtt_client.__client
+            mqtt_client = self.get_ecoflow_mqtt_client()
+            if not mqtt_client:
+                _LOGGER.debug("No MQTT client available for heartbeat")
+                return
                 
-                if mqtt_client and mqtt_client.is_connected():
-                    # Für jedes Gerät Heartbeat senden
-                    for device_sn in self.device_sns:
-                        try:
-                            # Heartbeat message wie in ioBroker (JSON mit ID 40/68/72)
-                            heartbeat_topic = f"/app/{self.username}/{device_sn}/thing/property/set"
-                            heartbeat_payload = {
-                                "id": 40,  # Heartbeat ID wie in ioBroker
+            if not mqtt_client.is_connected():
+                _LOGGER.debug("MQTT not connected for heartbeat")
+                return
+            
+            # Natürliche App-ähnliche Heartbeat-Rotation für alle EcoFlow Geräte
+            heartbeat_sent = False
+            
+            # Smart Rotation: Nur eine Nachricht pro Heartbeat (wie echte App)
+            if not hasattr(self, 'heartbeat_rotation_index'):
+                self.heartbeat_rotation_index = 0
+            
+            for device_sn in self.device_sns:
+                try:
+                    current_time = int(time.time() * 1000)
+                    device_type = self.detect_device_type(device_sn)
+                    
+                    # Stream Ultra-optimierte Heartbeat-Rotation
+                    if device_type in ["STREAM_ULTRA", "STREAM_AC", "STREAM_PRO"]:
+                        if self.heartbeat_rotation_index % 3 == 0:
+                            # Stream Ultra Quota mit erweiterten Parametern
+                            topic = f"/app/device/quota/{device_sn}"
+                            payload = {
+                                "id": current_time % 1000,
+                                "version": "1.0", 
+                                "params": {
+                                    "typeMap": 1,
+                                    "quotaMap": 1
+                                },
+                                "timestamp": current_time
+                            }
+                            heartbeat_type = "quota"
+                        elif self.heartbeat_rotation_index % 3 == 1:
+                            # Stream Ultra Property mit allen Datentypen
+                            topic = f"/app/device/property/{device_sn}/get"
+                            payload = {
+                                "id": (current_time + 1) % 1000,
+                                "version": "1.0",
+                                "params": {
+                                    "quotaMap": 1,
+                                    "streamData": 1,
+                                    "batteryData": 1,
+                                    "realTimeData": 1
+                                },
+                                "timestamp": current_time
+                            }
+                            heartbeat_type = "property"
+                        else:
+                            # Stream Ultra Thing mit korrektem cmdSet
+                            topic = f"/app/{self.username}/{device_sn}/thing/property/get"
+                            payload = {
+                                "id": (current_time + 2) % 1000,
+                                "version": "1.0",
+                                "params": {
+                                    "cmdSet": 3,
+                                    "cmdId": 254,
+                                    "dataType": 0
+                                },
+                                "timestamp": current_time
+                            }
+                            heartbeat_type = "thing"
+                    else:
+                        # Standard Heartbeat für andere Geräte
+                        if self.heartbeat_rotation_index % 3 == 0:
+                            topic = f"/app/device/quota/{device_sn}"
+                            payload = {
+                                "id": 102,
                                 "version": "1.0",
                                 "params": {},
-                                "timestamp": int(time.time() * 1000)
+                                "timestamp": current_time
                             }
-                            
-                            mqtt_client.publish(
-                                heartbeat_topic, 
-                                json.dumps(heartbeat_payload),
-                                qos=0  # QoS 0 für häufige Heartbeats
-                            )
-                            
-                            _LOGGER.debug(f"Heartbeat sent for {device_sn}")
-                            
-                        except Exception as device_error:
-                            _LOGGER.debug(f"Heartbeat failed for {device_sn}: {device_error}")
-                            continue
-                            
-                else:
-                    _LOGGER.warning("MQTT not connected for heartbeat")
+                            heartbeat_type = "quota"
+                        elif self.heartbeat_rotation_index % 3 == 1:
+                            topic = f"/app/device/property/{device_sn}/get"
+                            payload = {
+                                "id": 103,
+                                "version": "1.0", 
+                                "params": {"quotaMap": 1},
+                                "timestamp": current_time
+                            }
+                            heartbeat_type = "property"
+                        else:
+                            topic = f"/app/{self.username}/{device_sn}/thing/property/get"
+                            payload = {
+                                "id": 104,
+                                "version": "1.0",
+                                "params": {"cmdSet": 20, "cmdId": 1},
+                                "timestamp": current_time
+                            }
+                            heartbeat_type = "thing"
+                    
+                    # Sende nur eine Nachricht (natürlich)
+                    result = mqtt_client.publish(topic, json.dumps(payload), qos=1)
+                    
+                    if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                        heartbeat_sent = True
+                        _LOGGER.debug(f"Natural {heartbeat_type} heartbeat sent for {device_sn}")
+                    else:
+                        _LOGGER.debug(f"Heartbeat failed for {device_sn}: rc={result.rc}")
+                        
+                except Exception as device_error:
+                    _LOGGER.debug(f"Heartbeat failed for {device_sn}: {device_error}")
+                    continue
+            
+            # Erhöhe Rotation für nächsten Heartbeat
+            self.heartbeat_rotation_index += 1
+            
+            # Gelegentliches MQTT-Ping (nur alle 10 Heartbeats für natürliches Verhalten)
+            if self.heartbeat_rotation_index % 10 == 0:
+                try:
+                    if hasattr(mqtt_client, 'ping'):
+                        mqtt_client.ping()
+                        _LOGGER.debug("Natural MQTT ping sent")
+                        heartbeat_sent = True
+                except Exception as ping_error:
+                    _LOGGER.debug(f"Natural MQTT ping failed: {ping_error}")
+            
+            # Update Message-Timestamps für Health-Check
+            if heartbeat_sent:
+                try:
+                    current_time = time.time()
+                    if hasattr(mqtt_client, '_last_msg_out'):
+                        mqtt_client._last_msg_out = current_time
+                        _LOGGER.debug("Updated _last_msg_out timestamp")
+                except Exception as timestamp_error:
+                    _LOGGER.debug(f"Failed to update message timestamp: {timestamp_error}")
                     
         except Exception as e:
             _LOGGER.debug(f"Heartbeat system error: {e}")
@@ -2103,7 +2746,7 @@ class EcoflowMqttPublisher:
             self.setup_ecoflow_message_forwarding()
             
             # Kurz warten für die EcoFlow MQTT-Verbindung
-            _LOGGER.info("⏳ Waiting for EcoFlow MQTT connection...")
+            _LOGGER.info("Waiting for EcoFlow MQTT connection...")
             await asyncio.sleep(5)
             
             # Verbindungsstatus nochmals prüfen
@@ -2126,9 +2769,9 @@ class EcoflowMqttPublisher:
             self.message_count = 0
             self.last_message_time = None
             
-            # Keep-Alive System Konfiguration (wie ioBroker optimiert)
-            self.keep_alive_interval = 300   # Quota-Abfragen alle 5 Minuten (wie ioBroker)
-            self.heartbeat_interval = 60     # Heartbeat alle 60 Sekunden 
+            # Keep-Alive System Konfiguration (natürlich wie echte EcoFlow App)
+            self.keep_alive_interval = 300   # Quota-Abfragen alle 5 Minuten (wie echte App)
+            self.heartbeat_interval = 180    # Heartbeat alle 3 Minuten (natürlich)
             self.status_interval = 60        # Status-Updates alle 60 Sekunden
             self.last_keep_alive = 0
             self.last_heartbeat = 0
@@ -2158,12 +2801,33 @@ class EcoflowMqttPublisher:
                     
                     _LOGGER.info(f"Keep-Alive #{keep_alive_counter} sent to {len(self.device_sns)} devices - {msg_info}")
                 
-                # Heartbeat-Nachrichten (alle 60 Sekunden)
+                # Heartbeat-Nachrichten (alle 20 Sekunden - aggressiv vor Server-Timeout)
                 if current_time - self.last_heartbeat >= self.heartbeat_interval:
                     heartbeat_counter += 1
                     await self.send_heartbeat_messages()
                     self.last_heartbeat = current_time
                     _LOGGER.debug(f"Heartbeat #{heartbeat_counter} sent to {len(self.device_sns)} devices")
+                
+                # Natürliche Verbindungsüberwachung: Sanfte Checks bei längerer Inaktivität
+                if getattr(self, 'last_message_time', None):
+                    time_since_last_msg = current_time - self.last_message_time
+                    if time_since_last_msg > 120:  # Erst nach 2 Minuten ohne Nachrichten (natürlich)
+                        # Sanfte Verbindungsüberprüfung statt aggressiver Heartbeats
+                        _LOGGER.info(f"Natural check: {time_since_last_msg:.1f}s since last message - checking connection health")
+                        mqtt_client = self.get_ecoflow_mqtt_client()
+                        if mqtt_client and not mqtt_client.is_connected():
+                            _LOGGER.warning("Connection appears disconnected - gentle recovery")
+                            await self.gentle_connection_recovery()
+                
+                # Natürliche Verbindungsüberwachung nur wenn nötig (alle 15 Minuten statt 2 Minuten)
+                if heartbeat_counter > 50 and heartbeat_counter % 50 == 0:  # Alle ~15 Minuten bei 3min-Heartbeats
+                    mqtt_client = self.get_ecoflow_mqtt_client()
+                    if mqtt_client and not mqtt_client.is_connected():
+                        _LOGGER.warning("Periodic check: MQTT disconnected - gentle recovery")
+                        await self.gentle_connection_recovery()
+                        heartbeat_counter = 0
+                    elif mqtt_client:
+                        _LOGGER.info("Periodic check: MQTT connection stable")
                 
                 # Status-Updates senden (alle 60s)
                 if current_time - self.last_status_update >= self.status_interval:
@@ -2207,8 +2871,26 @@ class EcoflowMqttPublisher:
                     self.last_status_update = current_time
                     _LOGGER.info(f"Status update #{status_counter} sent for {len(self.device_sns)} devices")
                 
-                # Kurze Pause zwischen Zyklen
-                await asyncio.sleep(5)  # Schnellere Kontrolle für präziseres Timing
+                # Natürliche Überwachung: Nur bei sehr langer Inaktivität prüfen (wie ioBroker)
+                if getattr(self, 'last_message_time', None):
+                    time_since_last_msg = current_time - self.last_message_time
+                    # Nur bei 10+ Minuten ohne Nachrichten und nur einmal alle 5 Minuten warnen
+                    if time_since_last_msg > 600:  # 10 Minuten wie im ioBroker-Repo
+                        # Prüfe ob schon kürzlich gewarnt (verhindert Spam)
+                        last_warning = getattr(self, 'last_warning_time', 0)
+                        if current_time - last_warning > 300:  # Nur alle 5 Minuten warnen
+                            _LOGGER.warning(f"No messages from devices within {time_since_last_msg/60:.1f} minutes - connection may be unstable")
+                            self.last_warning_time = current_time
+                            
+                            # Nur bei sehr langer Inaktivität (20+ Minuten) Recovery versuchen
+                            if time_since_last_msg > 1200:  # 20 Minuten
+                                mqtt_client = self.get_ecoflow_mqtt_client()
+                                if mqtt_client and not mqtt_client.is_connected():
+                                    _LOGGER.warning("MQTT actually disconnected after 20+ minutes - attempting recovery")
+                                    await self.gentle_connection_recovery()
+                
+                # Natürliche Pause wie echte Apps - nicht aggressive Kontrolle
+                await asyncio.sleep(60)  # 1 Minute zwischen Checks (entspannt wie ioBroker)
                 
         except Exception as e:
             _LOGGER.error(f"Error during startup: {e}")
