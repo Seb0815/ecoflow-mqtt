@@ -5,7 +5,7 @@ from typing import ClassVar as _ClassVar, Mapping as _Mapping, Optional as _Opti
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class HeaderStream(_message.Message):
-    __slots__ = ("pdata", "src", "dest", "d_src", "d_dest", "enc_type", "check_type", "cmd_func", "cmd_id", "data_len", "need_ack", "is_ack", "seq", "product_id", "version", "payload_ver", "time_snap", "is_rw_cmd", "is_queue", "ack_type", "code", "module_sn", "device_sn", "field_1067", "field_1299", "field_1306", "field_1307", "field_1308", "field_1326", "field_1332", "pv_power_string_3", "pv_power_string_4", "field_1365", "field_1366", "field_1374", "field_1388", "pv_total_power", "field_1390", "field_1391", "field_1420", "field_1424", "field_1431", "field_1400", "field_1401", "field_1402", "field_1403", "field_1404", "field_1405", "field_1406", "field_1407", "pv_power_candidate_1408", "pv_power_string_1", "pv_power_string_2", "field_1412", "field_1413", "field_1414", "field_1415", "field_1393", "field_1394", "field_1416", "field_1418", "field_1419", "field_1425", "field_1433")
+    __slots__ = ("pdata", "src", "dest", "d_src", "d_dest", "enc_type", "check_type", "cmd_func", "cmd_id", "data_len", "need_ack", "is_ack", "seq", "product_id", "version", "payload_ver", "time_snap", "is_rw_cmd", "is_queue", "ack_type", "code", "module_sn", "device_sn", "field_1067", "field_1299", "field_1306", "field_1307", "field_1308", "field_1326", "field_1332", "field_1333", "field_1334", "field_1365", "field_1366", "field_1374", "field_1388", "field_1389", "field_1390", "field_1391", "field_1420", "field_1424", "field_1431", "field_1400", "field_1401", "field_1402", "field_1403", "field_1404", "field_1405", "field_1406", "field_1407", "field_1408", "field_1409", "field_14010", "field_1412", "field_1413", "field_1414", "field_1415", "field_1393", "field_1394", "field_1416", "field_1418", "field_1419", "field_1425", "field_1433")
     PDATA_FIELD_NUMBER: _ClassVar[int]
     SRC_FIELD_NUMBER: _ClassVar[int]
     DEST_FIELD_NUMBER: _ClassVar[int]
@@ -37,13 +37,13 @@ class HeaderStream(_message.Message):
     FIELD_1308_FIELD_NUMBER: _ClassVar[int]
     FIELD_1326_FIELD_NUMBER: _ClassVar[int]
     FIELD_1332_FIELD_NUMBER: _ClassVar[int]
-    PV_POWER_STRING_3_FIELD_NUMBER: _ClassVar[int]
-    PV_POWER_STRING_4_FIELD_NUMBER: _ClassVar[int]
+    FIELD_1333_FIELD_NUMBER: _ClassVar[int]
+    FIELD_1334_FIELD_NUMBER: _ClassVar[int]
     FIELD_1365_FIELD_NUMBER: _ClassVar[int]
     FIELD_1366_FIELD_NUMBER: _ClassVar[int]
     FIELD_1374_FIELD_NUMBER: _ClassVar[int]
     FIELD_1388_FIELD_NUMBER: _ClassVar[int]
-    PV_TOTAL_POWER_FIELD_NUMBER: _ClassVar[int]
+    FIELD_1389_FIELD_NUMBER: _ClassVar[int]
     FIELD_1390_FIELD_NUMBER: _ClassVar[int]
     FIELD_1391_FIELD_NUMBER: _ClassVar[int]
     FIELD_1420_FIELD_NUMBER: _ClassVar[int]
@@ -57,9 +57,9 @@ class HeaderStream(_message.Message):
     FIELD_1405_FIELD_NUMBER: _ClassVar[int]
     FIELD_1406_FIELD_NUMBER: _ClassVar[int]
     FIELD_1407_FIELD_NUMBER: _ClassVar[int]
-    PV_POWER_CANDIDATE_1408_FIELD_NUMBER: _ClassVar[int]
-    PV_POWER_STRING_1_FIELD_NUMBER: _ClassVar[int]
-    PV_POWER_STRING_2_FIELD_NUMBER: _ClassVar[int]
+    FIELD_1408_FIELD_NUMBER: _ClassVar[int]
+    FIELD_1409_FIELD_NUMBER: _ClassVar[int]
+    FIELD_14010_FIELD_NUMBER: _ClassVar[int]
     FIELD_1412_FIELD_NUMBER: _ClassVar[int]
     FIELD_1413_FIELD_NUMBER: _ClassVar[int]
     FIELD_1414_FIELD_NUMBER: _ClassVar[int]
@@ -101,13 +101,13 @@ class HeaderStream(_message.Message):
     field_1308: int
     field_1326: int
     field_1332: int
-    pv_power_string_3: int
-    pv_power_string_4: int
+    field_1333: int
+    field_1334: int
     field_1365: int
     field_1366: int
     field_1374: int
     field_1388: int
-    pv_total_power: int
+    field_1389: int
     field_1390: int
     field_1391: int
     field_1420: int
@@ -121,9 +121,9 @@ class HeaderStream(_message.Message):
     field_1405: int
     field_1406: int
     field_1407: int
-    pv_power_candidate_1408: int
-    pv_power_string_1: int
-    pv_power_string_2: int
+    field_1408: int
+    field_1409: int
+    field_14010: int
     field_1412: int
     field_1413: int
     field_1414: int
@@ -135,7 +135,7 @@ class HeaderStream(_message.Message):
     field_1419: int
     field_1425: int
     field_1433: int
-    def __init__(self, pdata: _Optional[bytes] = ..., src: _Optional[int] = ..., dest: _Optional[int] = ..., d_src: _Optional[int] = ..., d_dest: _Optional[int] = ..., enc_type: _Optional[int] = ..., check_type: _Optional[int] = ..., cmd_func: _Optional[int] = ..., cmd_id: _Optional[int] = ..., data_len: _Optional[int] = ..., need_ack: _Optional[int] = ..., is_ack: _Optional[int] = ..., seq: _Optional[int] = ..., product_id: _Optional[int] = ..., version: _Optional[int] = ..., payload_ver: _Optional[int] = ..., time_snap: _Optional[int] = ..., is_rw_cmd: _Optional[int] = ..., is_queue: _Optional[int] = ..., ack_type: _Optional[int] = ..., code: _Optional[str] = ..., module_sn: _Optional[str] = ..., device_sn: _Optional[str] = ..., field_1067: _Optional[int] = ..., field_1299: _Optional[int] = ..., field_1306: _Optional[int] = ..., field_1307: _Optional[int] = ..., field_1308: _Optional[int] = ..., field_1326: _Optional[int] = ..., field_1332: _Optional[int] = ..., pv_power_string_3: _Optional[int] = ..., pv_power_string_4: _Optional[int] = ..., field_1365: _Optional[int] = ..., field_1366: _Optional[int] = ..., field_1374: _Optional[int] = ..., field_1388: _Optional[int] = ..., pv_total_power: _Optional[int] = ..., field_1390: _Optional[int] = ..., field_1391: _Optional[int] = ..., field_1420: _Optional[int] = ..., field_1424: _Optional[int] = ..., field_1431: _Optional[int] = ..., field_1400: _Optional[int] = ..., field_1401: _Optional[int] = ..., field_1402: _Optional[int] = ..., field_1403: _Optional[int] = ..., field_1404: _Optional[int] = ..., field_1405: _Optional[int] = ..., field_1406: _Optional[int] = ..., field_1407: _Optional[int] = ..., pv_power_candidate_1408: _Optional[int] = ..., pv_power_string_1: _Optional[int] = ..., pv_power_string_2: _Optional[int] = ..., field_1412: _Optional[int] = ..., field_1413: _Optional[int] = ..., field_1414: _Optional[int] = ..., field_1415: _Optional[int] = ..., field_1393: _Optional[int] = ..., field_1394: _Optional[int] = ..., field_1416: _Optional[int] = ..., field_1418: _Optional[int] = ..., field_1419: _Optional[int] = ..., field_1425: _Optional[int] = ..., field_1433: _Optional[int] = ..., **kwargs) -> None: ...
+    def __init__(self, pdata: _Optional[bytes] = ..., src: _Optional[int] = ..., dest: _Optional[int] = ..., d_src: _Optional[int] = ..., d_dest: _Optional[int] = ..., enc_type: _Optional[int] = ..., check_type: _Optional[int] = ..., cmd_func: _Optional[int] = ..., cmd_id: _Optional[int] = ..., data_len: _Optional[int] = ..., need_ack: _Optional[int] = ..., is_ack: _Optional[int] = ..., seq: _Optional[int] = ..., product_id: _Optional[int] = ..., version: _Optional[int] = ..., payload_ver: _Optional[int] = ..., time_snap: _Optional[int] = ..., is_rw_cmd: _Optional[int] = ..., is_queue: _Optional[int] = ..., ack_type: _Optional[int] = ..., code: _Optional[str] = ..., module_sn: _Optional[str] = ..., device_sn: _Optional[str] = ..., field_1067: _Optional[int] = ..., field_1299: _Optional[int] = ..., field_1306: _Optional[int] = ..., field_1307: _Optional[int] = ..., field_1308: _Optional[int] = ..., field_1326: _Optional[int] = ..., field_1332: _Optional[int] = ..., field_1333: _Optional[int] = ..., field_1334: _Optional[int] = ..., field_1365: _Optional[int] = ..., field_1366: _Optional[int] = ..., field_1374: _Optional[int] = ..., field_1388: _Optional[int] = ..., field_1389: _Optional[int] = ..., field_1390: _Optional[int] = ..., field_1391: _Optional[int] = ..., field_1420: _Optional[int] = ..., field_1424: _Optional[int] = ..., field_1431: _Optional[int] = ..., field_1400: _Optional[int] = ..., field_1401: _Optional[int] = ..., field_1402: _Optional[int] = ..., field_1403: _Optional[int] = ..., field_1404: _Optional[int] = ..., field_1405: _Optional[int] = ..., field_1406: _Optional[int] = ..., field_1407: _Optional[int] = ..., field_1408: _Optional[int] = ..., field_1409: _Optional[int] = ..., field_14010: _Optional[int] = ..., field_1412: _Optional[int] = ..., field_1413: _Optional[int] = ..., field_1414: _Optional[int] = ..., field_1415: _Optional[int] = ..., field_1393: _Optional[int] = ..., field_1394: _Optional[int] = ..., field_1416: _Optional[int] = ..., field_1418: _Optional[int] = ..., field_1419: _Optional[int] = ..., field_1425: _Optional[int] = ..., field_1433: _Optional[int] = ..., **kwargs) -> None: ...
 
 class SendHeaderStreamMsg(_message.Message):
     __slots__ = ("msg",)
@@ -150,13 +150,13 @@ class Champ_cmd50_4(_message.Message):
     def __init__(self, Champ_cmd50_4_field1: _Optional[int] = ...) -> None: ...
 
 class Champ_cmd50_3(_message.Message):
-    __slots__ = ("Champ_cmd50_3_field1", "Champ_cmd50_3_field2", "Champ_cmd50_3_field3", "Champ_cmd50_3_field4", "Champ_cmd50_3_field5", "Champ_cmd50_3_filed6", "Champ_cmd50_3_field7", "Champ_cmd50_3_field8", "Champ_cmd50_3_field9", "Champ_cmd50_3_field10", "Champ_cmd50_3_field11", "Champ_cmd50_3_field12", "Champ_cmd50_3_field13", "Champ_cmd50_3_field14", "Champ_cmd50_3_field15", "Champ_cmd50_3_field16", "Champ_cmd50_3_field17", "Champ_cmd50_3_field18", "Champ_cmd50_3_field19", "pv_candidate_20", "pv_candidate_21", "Champ_cmd50_3_field22", "Champ_cmd50_3_field23", "Champ_cmd50_3_field24", "soc", "Champ_cmd50_3_field26", "Champ_cmd50_3_field27", "Champ_cmd50_3_field28", "Champ_cmd50_3_field29", "Champ_cmd50_3_field30", "Champ_cmd50_3_field31", "Champ_cmd50_3_field32", "Champ_cmd50_3_field33", "Champ_cmd50_3_field34", "Champ_cmd50_3_field35", "version", "Champ_cmd50_3_field37", "Champ_cmd50_3_field38", "sn1", "pv_candidate_40", "Champ_cmd50_3_field41", "battery_soc_real_42", "Champ_cmd50_3_field43", "battery_soc_real_44", "Champ_cmd50_3_field45", "Champ_cmd50_3_field46", "Champ_cmd50_3_field47", "Champ_cmd50_3_field48", "Champ_cmd50_3_field49", "Champ_cmd50_3_field50", "Champ_cmd50_3_field51", "Champ_cmd50_3_field52", "pv_candidate_53", "Champ_cmd50_3_field54", "Champ_cmd50_3_field55", "Champ_cmd50_3_field56", "Champ_cmd50_3_field57", "Champ_cmd50_3_field59", "Champ_cmd50_3_field60", "Champ_cmd50_3_field61", "Champ_cmd50_3_field63", "Champ_cmd50_3_field64", "Champ_cmd50_3_field65", "Champ_cmd50_3_field66", "Champ_cmd50_3_field67", "Champ_cmd50_3_field68", "Champ_cmd50_3_field69", "Champ_cmd50_3_field70", "Champ_cmd50_3_field71", "Champ_cmd50_3_field72", "Champ_cmd50_3_field73", "Champ_cmd50_3_field74", "Champ_cmd50_3_field75", "Champ_cmd50_3_field76", "Champ_cmd50_3_field77", "Champ_cmd50_3_field78", "Champ_cmd50_3_field79", "Champ_cmd50_3_field80", "sn2", "Champ_cmd50_3_field82")
+    __slots__ = ("Champ_cmd50_3_field1", "Champ_cmd50_3_field2", "Champ_cmd50_3_field3", "Champ_cmd50_3_field4", "Champ_cmd50_3_field5", "Champ_cmd50_3_field6", "Champ_cmd50_3_field7", "Champ_cmd50_3_field8", "Champ_cmd50_3_field9", "Champ_cmd50_3_field10", "Champ_cmd50_3_field11", "Champ_cmd50_3_field12", "Champ_cmd50_3_field13", "Champ_cmd50_3_field14", "Champ_cmd50_3_field15", "Champ_cmd50_3_field16", "Champ_cmd50_3_field17", "Champ_cmd50_3_field18", "Champ_cmd50_3_field19", "Champ_cmd50_3_field20", "Champ_cmd50_3_field21", "Champ_cmd50_3_field22", "Champ_cmd50_3_field23", "Champ_cmd50_3_field24", "soc", "Champ_cmd50_3_field26", "Champ_cmd50_3_field27", "Champ_cmd50_3_field28", "Champ_cmd50_3_field29", "Champ_cmd50_3_field30", "Champ_cmd50_3_field31", "Champ_cmd50_3_field32", "Champ_cmd50_3_field33", "Champ_cmd50_3_field34", "Champ_cmd50_3_field35", "version", "Champ_cmd50_3_field37", "Champ_cmd50_3_field38", "sn1", "Champ_cmd50_3_field40", "Champ_cmd50_3_field41", "Champ_cmd50_3_field42", "Champ_cmd50_3_field43", "Champ_cmd50_3_field44", "Champ_cmd50_3_field45", "Champ_cmd50_3_field46", "Champ_cmd50_3_field47", "Champ_cmd50_3_field48", "Champ_cmd50_3_field49", "Champ_cmd50_3_field50", "Champ_cmd50_3_field51", "Champ_cmd50_3_field52", "Champ_cmd50_3_field53", "Champ_cmd50_3_field54", "Champ_cmd50_3_field55", "Champ_cmd50_3_field56", "Champ_cmd50_3_field57", "Champ_cmd50_3_field59", "Champ_cmd50_3_field60", "Champ_cmd50_3_field61", "Champ_cmd50_3_field63", "Champ_cmd50_3_field64", "Champ_cmd50_3_field65", "Champ_cmd50_3_field66", "Champ_cmd50_3_field67", "Champ_cmd50_3_field68", "Champ_cmd50_3_field69", "Champ_cmd50_3_field70", "Champ_cmd50_3_field71", "Champ_cmd50_3_field72", "Champ_cmd50_3_field73", "Champ_cmd50_3_field74", "Champ_cmd50_3_field75", "Champ_cmd50_3_field76", "Champ_cmd50_3_field77", "Champ_cmd50_3_field78", "Champ_cmd50_3_field79", "Champ_cmd50_3_field80", "sn2", "Champ_cmd50_3_field82")
     CHAMP_CMD50_3_FIELD1_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD2_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD3_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD4_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD5_FIELD_NUMBER: _ClassVar[int]
-    CHAMP_CMD50_3_FILED6_FIELD_NUMBER: _ClassVar[int]
+    CHAMP_CMD50_3_FIELD6_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD7_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD8_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD9_FIELD_NUMBER: _ClassVar[int]
@@ -170,8 +170,8 @@ class Champ_cmd50_3(_message.Message):
     CHAMP_CMD50_3_FIELD17_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD18_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD19_FIELD_NUMBER: _ClassVar[int]
-    PV_CANDIDATE_20_FIELD_NUMBER: _ClassVar[int]
-    PV_CANDIDATE_21_FIELD_NUMBER: _ClassVar[int]
+    CHAMP_CMD50_3_FIELD20_FIELD_NUMBER: _ClassVar[int]
+    CHAMP_CMD50_3_FIELD21_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD22_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD23_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD24_FIELD_NUMBER: _ClassVar[int]
@@ -190,11 +190,11 @@ class Champ_cmd50_3(_message.Message):
     CHAMP_CMD50_3_FIELD37_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD38_FIELD_NUMBER: _ClassVar[int]
     SN1_FIELD_NUMBER: _ClassVar[int]
-    PV_CANDIDATE_40_FIELD_NUMBER: _ClassVar[int]
+    CHAMP_CMD50_3_FIELD40_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD41_FIELD_NUMBER: _ClassVar[int]
-    BATTERY_SOC_REAL_42_FIELD_NUMBER: _ClassVar[int]
+    CHAMP_CMD50_3_FIELD42_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD43_FIELD_NUMBER: _ClassVar[int]
-    BATTERY_SOC_REAL_44_FIELD_NUMBER: _ClassVar[int]
+    CHAMP_CMD50_3_FIELD44_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD45_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD46_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD47_FIELD_NUMBER: _ClassVar[int]
@@ -203,7 +203,7 @@ class Champ_cmd50_3(_message.Message):
     CHAMP_CMD50_3_FIELD50_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD51_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD52_FIELD_NUMBER: _ClassVar[int]
-    PV_CANDIDATE_53_FIELD_NUMBER: _ClassVar[int]
+    CHAMP_CMD50_3_FIELD53_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD54_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD55_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD50_3_FIELD56_FIELD_NUMBER: _ClassVar[int]
@@ -236,7 +236,7 @@ class Champ_cmd50_3(_message.Message):
     Champ_cmd50_3_field3: int
     Champ_cmd50_3_field4: int
     Champ_cmd50_3_field5: int
-    Champ_cmd50_3_filed6: int
+    Champ_cmd50_3_field6: int
     Champ_cmd50_3_field7: int
     Champ_cmd50_3_field8: int
     Champ_cmd50_3_field9: int
@@ -250,8 +250,8 @@ class Champ_cmd50_3(_message.Message):
     Champ_cmd50_3_field17: int
     Champ_cmd50_3_field18: int
     Champ_cmd50_3_field19: int
-    pv_candidate_20: int
-    pv_candidate_21: int
+    Champ_cmd50_3_field20: int
+    Champ_cmd50_3_field21: int
     Champ_cmd50_3_field22: int
     Champ_cmd50_3_field23: int
     Champ_cmd50_3_field24: int
@@ -270,11 +270,11 @@ class Champ_cmd50_3(_message.Message):
     Champ_cmd50_3_field37: int
     Champ_cmd50_3_field38: int
     sn1: str
-    pv_candidate_40: int
+    Champ_cmd50_3_field40: int
     Champ_cmd50_3_field41: int
-    battery_soc_real_42: float
+    Champ_cmd50_3_field42: float
     Champ_cmd50_3_field43: float
-    battery_soc_real_44: float
+    Champ_cmd50_3_field44: float
     Champ_cmd50_3_field45: int
     Champ_cmd50_3_field46: int
     Champ_cmd50_3_field47: int
@@ -283,7 +283,7 @@ class Champ_cmd50_3(_message.Message):
     Champ_cmd50_3_field50: int
     Champ_cmd50_3_field51: int
     Champ_cmd50_3_field52: float
-    pv_candidate_53: float
+    Champ_cmd50_3_field53: float
     Champ_cmd50_3_field54: float
     Champ_cmd50_3_field55: int
     Champ_cmd50_3_field56: str
@@ -311,7 +311,7 @@ class Champ_cmd50_3(_message.Message):
     Champ_cmd50_3_field80: int
     sn2: str
     Champ_cmd50_3_field82: int
-    def __init__(self, Champ_cmd50_3_field1: _Optional[int] = ..., Champ_cmd50_3_field2: _Optional[int] = ..., Champ_cmd50_3_field3: _Optional[int] = ..., Champ_cmd50_3_field4: _Optional[int] = ..., Champ_cmd50_3_field5: _Optional[int] = ..., Champ_cmd50_3_filed6: _Optional[int] = ..., Champ_cmd50_3_field7: _Optional[int] = ..., Champ_cmd50_3_field8: _Optional[int] = ..., Champ_cmd50_3_field9: _Optional[int] = ..., Champ_cmd50_3_field10: _Optional[int] = ..., Champ_cmd50_3_field11: _Optional[int] = ..., Champ_cmd50_3_field12: _Optional[int] = ..., Champ_cmd50_3_field13: _Optional[int] = ..., Champ_cmd50_3_field14: _Optional[int] = ..., Champ_cmd50_3_field15: _Optional[int] = ..., Champ_cmd50_3_field16: _Optional[int] = ..., Champ_cmd50_3_field17: _Optional[int] = ..., Champ_cmd50_3_field18: _Optional[int] = ..., Champ_cmd50_3_field19: _Optional[int] = ..., pv_candidate_20: _Optional[int] = ..., pv_candidate_21: _Optional[int] = ..., Champ_cmd50_3_field22: _Optional[int] = ..., Champ_cmd50_3_field23: _Optional[int] = ..., Champ_cmd50_3_field24: _Optional[int] = ..., soc: _Optional[float] = ..., Champ_cmd50_3_field26: _Optional[int] = ..., Champ_cmd50_3_field27: _Optional[int] = ..., Champ_cmd50_3_field28: _Optional[int] = ..., Champ_cmd50_3_field29: _Optional[int] = ..., Champ_cmd50_3_field30: _Optional[int] = ..., Champ_cmd50_3_field31: _Optional[int] = ..., Champ_cmd50_3_field32: _Optional[int] = ..., Champ_cmd50_3_field33: _Optional[bytes] = ..., Champ_cmd50_3_field34: _Optional[int] = ..., Champ_cmd50_3_field35: _Optional[bytes] = ..., version: _Optional[str] = ..., Champ_cmd50_3_field37: _Optional[int] = ..., Champ_cmd50_3_field38: _Optional[int] = ..., sn1: _Optional[str] = ..., pv_candidate_40: _Optional[int] = ..., Champ_cmd50_3_field41: _Optional[int] = ..., battery_soc_real_42: _Optional[float] = ..., Champ_cmd50_3_field43: _Optional[float] = ..., battery_soc_real_44: _Optional[float] = ..., Champ_cmd50_3_field45: _Optional[int] = ..., Champ_cmd50_3_field46: _Optional[int] = ..., Champ_cmd50_3_field47: _Optional[int] = ..., Champ_cmd50_3_field48: _Optional[int] = ..., Champ_cmd50_3_field49: _Optional[int] = ..., Champ_cmd50_3_field50: _Optional[int] = ..., Champ_cmd50_3_field51: _Optional[int] = ..., Champ_cmd50_3_field52: _Optional[float] = ..., pv_candidate_53: _Optional[float] = ..., Champ_cmd50_3_field54: _Optional[float] = ..., Champ_cmd50_3_field55: _Optional[int] = ..., Champ_cmd50_3_field56: _Optional[str] = ..., Champ_cmd50_3_field57: _Optional[int] = ..., Champ_cmd50_3_field59: _Optional[int] = ..., Champ_cmd50_3_field60: _Optional[str] = ..., Champ_cmd50_3_field61: _Optional[int] = ..., Champ_cmd50_3_field63: _Optional[int] = ..., Champ_cmd50_3_field64: _Optional[int] = ..., Champ_cmd50_3_field65: _Optional[int] = ..., Champ_cmd50_3_field66: _Optional[int] = ..., Champ_cmd50_3_field67: _Optional[int] = ..., Champ_cmd50_3_field68: _Optional[int] = ..., Champ_cmd50_3_field69: _Optional[int] = ..., Champ_cmd50_3_field70: _Optional[bytes] = ..., Champ_cmd50_3_field71: _Optional[int] = ..., Champ_cmd50_3_field72: _Optional[int] = ..., Champ_cmd50_3_field73: _Optional[int] = ..., Champ_cmd50_3_field74: _Optional[int] = ..., Champ_cmd50_3_field75: _Optional[int] = ..., Champ_cmd50_3_field76: _Optional[int] = ..., Champ_cmd50_3_field77: _Optional[int] = ..., Champ_cmd50_3_field78: _Optional[int] = ..., Champ_cmd50_3_field79: _Optional[int] = ..., Champ_cmd50_3_field80: _Optional[int] = ..., sn2: _Optional[str] = ..., Champ_cmd50_3_field82: _Optional[int] = ...) -> None: ...
+    def __init__(self, Champ_cmd50_3_field1: _Optional[int] = ..., Champ_cmd50_3_field2: _Optional[int] = ..., Champ_cmd50_3_field3: _Optional[int] = ..., Champ_cmd50_3_field4: _Optional[int] = ..., Champ_cmd50_3_field5: _Optional[int] = ..., Champ_cmd50_3_field6: _Optional[int] = ..., Champ_cmd50_3_field7: _Optional[int] = ..., Champ_cmd50_3_field8: _Optional[int] = ..., Champ_cmd50_3_field9: _Optional[int] = ..., Champ_cmd50_3_field10: _Optional[int] = ..., Champ_cmd50_3_field11: _Optional[int] = ..., Champ_cmd50_3_field12: _Optional[int] = ..., Champ_cmd50_3_field13: _Optional[int] = ..., Champ_cmd50_3_field14: _Optional[int] = ..., Champ_cmd50_3_field15: _Optional[int] = ..., Champ_cmd50_3_field16: _Optional[int] = ..., Champ_cmd50_3_field17: _Optional[int] = ..., Champ_cmd50_3_field18: _Optional[int] = ..., Champ_cmd50_3_field19: _Optional[int] = ..., Champ_cmd50_3_field20: _Optional[int] = ..., Champ_cmd50_3_field21: _Optional[int] = ..., Champ_cmd50_3_field22: _Optional[int] = ..., Champ_cmd50_3_field23: _Optional[int] = ..., Champ_cmd50_3_field24: _Optional[int] = ..., soc: _Optional[float] = ..., Champ_cmd50_3_field26: _Optional[int] = ..., Champ_cmd50_3_field27: _Optional[int] = ..., Champ_cmd50_3_field28: _Optional[int] = ..., Champ_cmd50_3_field29: _Optional[int] = ..., Champ_cmd50_3_field30: _Optional[int] = ..., Champ_cmd50_3_field31: _Optional[int] = ..., Champ_cmd50_3_field32: _Optional[int] = ..., Champ_cmd50_3_field33: _Optional[bytes] = ..., Champ_cmd50_3_field34: _Optional[int] = ..., Champ_cmd50_3_field35: _Optional[bytes] = ..., version: _Optional[str] = ..., Champ_cmd50_3_field37: _Optional[int] = ..., Champ_cmd50_3_field38: _Optional[int] = ..., sn1: _Optional[str] = ..., Champ_cmd50_3_field40: _Optional[int] = ..., Champ_cmd50_3_field41: _Optional[int] = ..., Champ_cmd50_3_field42: _Optional[float] = ..., Champ_cmd50_3_field43: _Optional[float] = ..., Champ_cmd50_3_field44: _Optional[float] = ..., Champ_cmd50_3_field45: _Optional[int] = ..., Champ_cmd50_3_field46: _Optional[int] = ..., Champ_cmd50_3_field47: _Optional[int] = ..., Champ_cmd50_3_field48: _Optional[int] = ..., Champ_cmd50_3_field49: _Optional[int] = ..., Champ_cmd50_3_field50: _Optional[int] = ..., Champ_cmd50_3_field51: _Optional[int] = ..., Champ_cmd50_3_field52: _Optional[float] = ..., Champ_cmd50_3_field53: _Optional[float] = ..., Champ_cmd50_3_field54: _Optional[float] = ..., Champ_cmd50_3_field55: _Optional[int] = ..., Champ_cmd50_3_field56: _Optional[str] = ..., Champ_cmd50_3_field57: _Optional[int] = ..., Champ_cmd50_3_field59: _Optional[int] = ..., Champ_cmd50_3_field60: _Optional[str] = ..., Champ_cmd50_3_field61: _Optional[int] = ..., Champ_cmd50_3_field63: _Optional[int] = ..., Champ_cmd50_3_field64: _Optional[int] = ..., Champ_cmd50_3_field65: _Optional[int] = ..., Champ_cmd50_3_field66: _Optional[int] = ..., Champ_cmd50_3_field67: _Optional[int] = ..., Champ_cmd50_3_field68: _Optional[int] = ..., Champ_cmd50_3_field69: _Optional[int] = ..., Champ_cmd50_3_field70: _Optional[bytes] = ..., Champ_cmd50_3_field71: _Optional[int] = ..., Champ_cmd50_3_field72: _Optional[int] = ..., Champ_cmd50_3_field73: _Optional[int] = ..., Champ_cmd50_3_field74: _Optional[int] = ..., Champ_cmd50_3_field75: _Optional[int] = ..., Champ_cmd50_3_field76: _Optional[int] = ..., Champ_cmd50_3_field77: _Optional[int] = ..., Champ_cmd50_3_field78: _Optional[int] = ..., Champ_cmd50_3_field79: _Optional[int] = ..., Champ_cmd50_3_field80: _Optional[int] = ..., sn2: _Optional[str] = ..., Champ_cmd50_3_field82: _Optional[int] = ...) -> None: ...
 
 class Champ_cmd50_2(_message.Message):
     __slots__ = ("Champ_cmd50_2champ3", "Champ_cmd50_2_field1", "Champ_cmd50_2_field2", "Champ_cmd50_2_field3", "Champ_cmd50_2_field4", "Champ_cmd50_2_field5", "Champ_cmd50_2_field6", "Champ_cmd50_2_field7", "Champ_cmd50_2_field8", "Champ_cmd50_2_field9")
@@ -344,19 +344,30 @@ class Champ_cmd50(_message.Message):
     def __init__(self, Champ_cmd50_champ2: _Optional[_Union[Champ_cmd50_2, _Mapping]] = ...) -> None: ...
 
 class CloudMetter(_message.Message):
-    __slots__ = ("Champ_cmd21_4_field1", "Champ_cmd21_4_field2", "sn_metter", "Champ_cmd21_4_field4")
-    CHAMP_CMD21_4_FIELD1_FIELD_NUMBER: _ClassVar[int]
-    CHAMP_CMD21_4_FIELD2_FIELD_NUMBER: _ClassVar[int]
-    SN_METTER_FIELD_NUMBER: _ClassVar[int]
-    CHAMP_CMD21_4_FIELD4_FIELD_NUMBER: _ClassVar[int]
-    Champ_cmd21_4_field1: int
-    Champ_cmd21_4_field2: int
-    sn_metter: str
-    Champ_cmd21_4_field4: int
-    def __init__(self, Champ_cmd21_4_field1: _Optional[int] = ..., Champ_cmd21_4_field2: _Optional[int] = ..., sn_metter: _Optional[str] = ..., Champ_cmd21_4_field4: _Optional[int] = ...) -> None: ...
+    __slots__ = ("hasMeter", "model", "sn", "phaseAPower", "phaseBPower", "phaseCPower")
+    HASMETER_FIELD_NUMBER: _ClassVar[int]
+    MODEL_FIELD_NUMBER: _ClassVar[int]
+    SN_FIELD_NUMBER: _ClassVar[int]
+    PHASEAPOWER_FIELD_NUMBER: _ClassVar[int]
+    PHASEBPOWER_FIELD_NUMBER: _ClassVar[int]
+    PHASECPOWER_FIELD_NUMBER: _ClassVar[int]
+    hasMeter: int
+    model: int
+    sn: str
+    phaseAPower: float
+    phaseBPower: float
+    phaseCPower: float
+    def __init__(self, hasMeter: _Optional[int] = ..., model: _Optional[int] = ..., sn: _Optional[str] = ..., phaseAPower: _Optional[float] = ..., phaseBPower: _Optional[float] = ..., phaseCPower: _Optional[float] = ...) -> None: ...
 
 class Champ_cmd21_3(_message.Message):
-    __slots__ = ("Champ_cmd21_3_field282", "Champ_cmd21_3_field460", "powGetSysGrid", "powGetSysLoad", "powGetPvSum", "powGetBpCms", "Champ_cmd21_3_field602", "gridConnectionPower", "cloudMetter", "sysGridConnectionPower", "powGetSysLoadFromBp", "powGetSysLoadFromGrid", "powGetSchuko1", "f32ShowSoc", "soc", "bmsBattSoc", "actSoc", "cmsBattSoc", "targetSoc", "diffSoc", "remainCap", "fullCap", "designCap", "inputWatts", "outputWatts", "temp", "vol", "cycles", "realSoh", "soh")
+    __slots__ = ("powGetPv1", "powGetPv2", "powGetPv3", "powGetPv4", "Champ_cmd21_3_field254", "Champ_cmd21_3_field268", "Champ_cmd21_3_field998", "Champ_cmd21_3_field282", "Champ_cmd21_3_field460", "powGetSysGrid", "powGetSysLoad", "powGetPvSum", "powGetBpCms", "Champ_cmd21_3_field602", "gridConnectionPower", "cloudMetter", "sysGridConnectionPower", "Champ_cmd21_3_field1002", "powGetSysLoadFromBp", "powGetSysLoadFromGrid", "powGetSchuko1")
+    POWGETPV1_FIELD_NUMBER: _ClassVar[int]
+    POWGETPV2_FIELD_NUMBER: _ClassVar[int]
+    POWGETPV3_FIELD_NUMBER: _ClassVar[int]
+    POWGETPV4_FIELD_NUMBER: _ClassVar[int]
+    CHAMP_CMD21_3_FIELD254_FIELD_NUMBER: _ClassVar[int]
+    CHAMP_CMD21_3_FIELD268_FIELD_NUMBER: _ClassVar[int]
+    CHAMP_CMD21_3_FIELD998_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD21_3_FIELD282_FIELD_NUMBER: _ClassVar[int]
     CHAMP_CMD21_3_FIELD460_FIELD_NUMBER: _ClassVar[int]
     POWGETSYSGRID_FIELD_NUMBER: _ClassVar[int]
@@ -367,26 +378,17 @@ class Champ_cmd21_3(_message.Message):
     GRIDCONNECTIONPOWER_FIELD_NUMBER: _ClassVar[int]
     CLOUDMETTER_FIELD_NUMBER: _ClassVar[int]
     SYSGRIDCONNECTIONPOWER_FIELD_NUMBER: _ClassVar[int]
+    CHAMP_CMD21_3_FIELD1002_FIELD_NUMBER: _ClassVar[int]
     POWGETSYSLOADFROMBP_FIELD_NUMBER: _ClassVar[int]
     POWGETSYSLOADFROMGRID_FIELD_NUMBER: _ClassVar[int]
     POWGETSCHUKO1_FIELD_NUMBER: _ClassVar[int]
-    F32SHOWSOC_FIELD_NUMBER: _ClassVar[int]
-    SOC_FIELD_NUMBER: _ClassVar[int]
-    BMSBATTSOC_FIELD_NUMBER: _ClassVar[int]
-    ACTSOC_FIELD_NUMBER: _ClassVar[int]
-    CMSBATTSOC_FIELD_NUMBER: _ClassVar[int]
-    TARGETSOC_FIELD_NUMBER: _ClassVar[int]
-    DIFFSOC_FIELD_NUMBER: _ClassVar[int]
-    REMAINCAP_FIELD_NUMBER: _ClassVar[int]
-    FULLCAP_FIELD_NUMBER: _ClassVar[int]
-    DESIGNCAP_FIELD_NUMBER: _ClassVar[int]
-    INPUTWATTS_FIELD_NUMBER: _ClassVar[int]
-    OUTPUTWATTS_FIELD_NUMBER: _ClassVar[int]
-    TEMP_FIELD_NUMBER: _ClassVar[int]
-    VOL_FIELD_NUMBER: _ClassVar[int]
-    CYCLES_FIELD_NUMBER: _ClassVar[int]
-    REALSOH_FIELD_NUMBER: _ClassVar[int]
-    SOH_FIELD_NUMBER: _ClassVar[int]
+    powGetPv1: float
+    powGetPv2: float
+    powGetPv3: float
+    powGetPv4: float
+    Champ_cmd21_3_field254: int
+    Champ_cmd21_3_field268: int
+    Champ_cmd21_3_field998: int
     Champ_cmd21_3_field282: int
     Champ_cmd21_3_field460: int
     powGetSysGrid: float
@@ -397,27 +399,11 @@ class Champ_cmd21_3(_message.Message):
     gridConnectionPower: float
     cloudMetter: CloudMetter
     sysGridConnectionPower: float
+    Champ_cmd21_3_field1002: int
     powGetSysLoadFromBp: float
     powGetSysLoadFromGrid: float
     powGetSchuko1: float
-    f32ShowSoc: float
-    soc: int
-    bmsBattSoc: float
-    actSoc: float
-    cmsBattSoc: float
-    targetSoc: float
-    diffSoc: float
-    remainCap: int
-    fullCap: int
-    designCap: int
-    inputWatts: float
-    outputWatts: float
-    temp: int
-    vol: int
-    cycles: int
-    realSoh: float
-    soh: int
-    def __init__(self, Champ_cmd21_3_field282: _Optional[int] = ..., Champ_cmd21_3_field460: _Optional[int] = ..., powGetSysGrid: _Optional[float] = ..., powGetSysLoad: _Optional[float] = ..., powGetPvSum: _Optional[float] = ..., powGetBpCms: _Optional[float] = ..., Champ_cmd21_3_field602: _Optional[float] = ..., gridConnectionPower: _Optional[float] = ..., cloudMetter: _Optional[_Union[CloudMetter, _Mapping]] = ..., sysGridConnectionPower: _Optional[float] = ..., powGetSysLoadFromBp: _Optional[float] = ..., powGetSysLoadFromGrid: _Optional[float] = ..., powGetSchuko1: _Optional[float] = ..., f32ShowSoc: _Optional[float] = ..., soc: _Optional[int] = ..., bmsBattSoc: _Optional[float] = ..., actSoc: _Optional[float] = ..., cmsBattSoc: _Optional[float] = ..., targetSoc: _Optional[float] = ..., diffSoc: _Optional[float] = ..., remainCap: _Optional[int] = ..., fullCap: _Optional[int] = ..., designCap: _Optional[int] = ..., inputWatts: _Optional[float] = ..., outputWatts: _Optional[float] = ..., temp: _Optional[int] = ..., vol: _Optional[int] = ..., cycles: _Optional[int] = ..., realSoh: _Optional[float] = ..., soh: _Optional[int] = ...) -> None: ...
+    def __init__(self, powGetPv1: _Optional[float] = ..., powGetPv2: _Optional[float] = ..., powGetPv3: _Optional[float] = ..., powGetPv4: _Optional[float] = ..., Champ_cmd21_3_field254: _Optional[int] = ..., Champ_cmd21_3_field268: _Optional[int] = ..., Champ_cmd21_3_field998: _Optional[int] = ..., Champ_cmd21_3_field282: _Optional[int] = ..., Champ_cmd21_3_field460: _Optional[int] = ..., powGetSysGrid: _Optional[float] = ..., powGetSysLoad: _Optional[float] = ..., powGetPvSum: _Optional[float] = ..., powGetBpCms: _Optional[float] = ..., Champ_cmd21_3_field602: _Optional[float] = ..., gridConnectionPower: _Optional[float] = ..., cloudMetter: _Optional[_Union[CloudMetter, _Mapping]] = ..., sysGridConnectionPower: _Optional[float] = ..., Champ_cmd21_3_field1002: _Optional[int] = ..., powGetSysLoadFromBp: _Optional[float] = ..., powGetSysLoadFromGrid: _Optional[float] = ..., powGetSchuko1: _Optional[float] = ...) -> None: ...
 
 class Champ_cmd21_2(_message.Message):
     __slots__ = ("Champ_cmd21_2_champ_cmd21_3", "Champ_cmd21_2_field2", "Champ_cmd21_2_field3", "Champ_cmd21_2_field4", "Champ_cmd21_2_field5", "Champ_cmd21_2_field8", "Champ_cmd21_2_field9", "Champ_cmd21_2_field10", "Champ_cmd21_2_field11", "Champ_cmd21_2_field16", "Champ_cmd21_2_field17")

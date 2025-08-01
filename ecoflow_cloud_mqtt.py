@@ -861,24 +861,25 @@ class EcoflowMqttPublisher:
                 }
                 payload_str = json.dumps(mqtt_data, indent=2)
             
-            # Weiterleitung an lokalen MQTT Broker
-            local_topic = f"{self.mqtt_base_topic}/{device_sn}/data"
-            self.mqtt_client.publish(local_topic, payload_str, retain=True)
+            # Weiterleitung an lokalen MQTT Broker - nur bei DEBUG Level
+            if _LOGGER.isEnabledFor(logging.DEBUG):
+                local_topic = f"{self.mqtt_base_topic}/{device_sn}/data"
+                self.mqtt_client.publish(local_topic, payload_str, retain=True)
             
-            # Geräte-spezifisches Topic
-            device_topic = f"{self.mqtt_base_topic}/{device_type.lower()}/{device_sn}/data"
-            self.mqtt_client.publish(device_topic, payload_str, retain=True)
+            # Geräte-spezifisches Topic wurde entfernt - keine Publikation mehr
             
             # Parameter-spezifische Topics nur für definierte Parameter
             if "params" in mqtt_data and mqtt_data["params"]:
                 self.publish_filtered_parameters(device_instance, device_sn, device_type, mqtt_data["params"], mqtt_data.get("timestamp", time.time()))
             
-            # Auch Original-Topic Structure beibehalten
-            clean_topic = topic.replace("/app/", "").replace("+", "unknown")
-            local_orig_topic = f"{self.mqtt_base_topic}/raw/{clean_topic}"
-            self.mqtt_client.publish(local_orig_topic, payload_str, retain=True)
+            # Original-Topic Structure wurde entfernt - keine Raw-Publikation mehr
             
-            _LOGGER.info(f"EcoFlow {device_type} data forwarded: {topic} -> {local_topic}")
+            # Log-Ausgabe nur bei DEBUG Level
+            if _LOGGER.isEnabledFor(logging.DEBUG):
+                local_topic = f"{self.mqtt_base_topic}/{device_sn}/data"
+                _LOGGER.debug(f"EcoFlow {device_type} data forwarded: {topic} -> {local_topic}")
+            else:
+                _LOGGER.info(f"EcoFlow {device_type} message processed (data topics published only in DEBUG mode)")
                 
         except Exception as e:
             _LOGGER.error(f"Error forwarding EcoFlow message: {e}")

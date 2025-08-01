@@ -184,18 +184,19 @@ syntax = "proto3";
     }
 
     message CloudMetter {
-        optional uint32 Champ_cmd21_4_field1 = 1;
-        optional uint32 Champ_cmd21_4_field2 = 2;
-        optional string sn_metter = 3;
-        optional uint32 Champ_cmd21_4_field4 = 4;
-
+        optional uint32 hasMeter = 1;               // Boolean: Cloud meter verfügbar (true/false)
+        optional uint32 model = 2;                  // Model code (1=CT_EF_01, 2=CT_EF_02, etc.)
+        optional string sn = 3;                     // Serial number des Cloud meters
+        optional float phaseAPower = 4;             // Phase A power in Watts
+        optional float phaseBPower = 5;             // Phase B power in Watts  
+        optional float phaseCPower = 6;             // Phase C power in Watts
     }
 
     message Champ_cmd21_3 {
       
-        optional float powGetPv2 = 70;           
         optional float powGetPv1 = 361;          
-        optional float powGetPv3 = 996;          
+        optional float powGetPv2 = 70;
+        optional float powGetPv3 = 996;
         optional float powGetPv4 = 997; 
         
         optional uint32 Champ_cmd21_3_field254 = 254;

@@ -78,6 +78,15 @@ class StreamAC(BaseDevice):
             # "cloudMetter.phaseBPower": 0,
             # "cloudMetter.phaseCPower": 0,
             # "cloudMetter.sn": "BKxxxx",
+            
+            # CloudMetter Sensoren (mit eindeutigem cloudMeter_ Präfix)
+            BaseSensorEntity(client, self, "cloudMeter_hasMeter", "Cloud Meter Available"),
+            BaseSensorEntity(client, self, "cloudMeter_model", "Cloud Meter Model"),
+            WattsSensorEntity(client, self, "cloudMeter_phaseAPower", "Cloud Meter Phase A Power"),
+            WattsSensorEntity(client, self, "cloudMeter_phaseBPower", "Cloud Meter Phase B Power"),
+            WattsSensorEntity(client, self, "cloudMeter_phaseCPower", "Cloud Meter Phase C Power"),
+            BaseSensorEntity(client, self, "cloudMeter_sn", "Cloud Meter Serial Number"),
+            
             # "cmsBattFullEnergy": 3840,
             # "cmsBattPowInMax": 2114,
             # "cmsBattPowOutMax": 2400,
@@ -325,6 +334,19 @@ class StreamAC(BaseDevice):
         if cls._cached_parameters is None:
             _LOGGER.debug(f"Extracting parameters for {cls.__name__} (first time)")
             cls._cached_parameters = extract_sensor_parameters_from_device_class(cls)
+            
+            # Manuell CloudMetter-Parameter hinzufügen (werden von extract_sensor_parameters nicht erkannt)
+            cloudmetter_params = {
+                "cloudMeter_hasMeter",
+                "cloudMeter_model", 
+                "cloudMeter_phaseAPower",
+                "cloudMeter_phaseBPower",
+                "cloudMeter_phaseCPower",
+                "cloudMeter_sn"
+            }
+            cls._cached_parameters.update(cloudmetter_params)
+            _LOGGER.debug(f"Added {len(cloudmetter_params)} CloudMetter parameters to defined parameters")
+            
         return cls._cached_parameters
 
     def _prepare_data_get_topic(self, raw_data) -> dict[str, any]:
@@ -354,7 +376,7 @@ class StreamAC(BaseDevice):
                     
                     # Intelligentes Protobuf-Parsing basierend auf cmd_id
                     if packet.msg.cmd_id == 21:
-                        # CMD 21: Verwende spezifische Protobuf-Definitionen
+                        # CMD 21: Verwende spezifische Protobuf-Definitionen                        
                         self._parsedata(packet, stream_ac2.Champ_cmd21(), raw)
                         self._parsedata(packet, stream_ac2.Champ_cmd21_3(), raw)
                     elif packet.msg.cmd_id == 50:
@@ -845,6 +867,52 @@ class StreamAC(BaseDevice):
             return "float"
         return "bytes"
 
+    def _map_cloudmetter_field_name(self, protobuf_field_name: str) -> str:
+        """
+        Mappt protobuf CloudMetter-Feldnamen zu benutzerfreundlichen Namen
+        Mit den neuen sprechenden Namen ist das Mapping 1:1
+        """
+        # Die protobuf-Felder haben jetzt bereits sprechende Namen!
+        # Keine Konvertierung mehr nötig, da wir die Proto-Definition geändert haben
+        return protobuf_field_name
+
+    def _convert_cloudmetter_value(self, field_name: str, value) -> any:
+        """
+        Konvertiert CloudMetter-Werte in das korrekte Format
+        Behandelt Signed/Unsigned Integer-Probleme und andere Datentyp-Konvertierungen
+        """
+        try:
+            # Power-Werte: Sind jetzt als float definiert, aber prüfe trotzdem auf Integer-Overflow
+            if "Power" in field_name:
+                if isinstance(value, int) and value > 2147483647:  # 2^31 - 1 (Max positive signed 32-bit)
+                    signed_value = value - 4294967296  # 2^32
+                    _LOGGER.debug(f"Converted {field_name}: {value} (unsigned) -> {signed_value} (signed)")
+                    return float(signed_value)
+                elif isinstance(value, (int, float)):
+                    return float(value)
+                return value
+            
+            # Boolean-Werte
+            if field_name == "hasMeter" and isinstance(value, int):
+                return bool(value)
+            
+            # Model-Werte: Interpretiere als Enum
+            if field_name == "model" and isinstance(value, int):
+                model_mapping = {
+                    1: "CT_EF_01",
+                    2: "CT_EF_02", 
+                    3: "CT_EF_03",
+                    4: "CT_EF_04"
+                }
+                return model_mapping.get(value, f"UNKNOWN_MODEL_{value}")
+            
+            # Alle anderen Werte unverändert
+            return value
+            
+        except Exception as e:
+            _LOGGER.debug(f"Value conversion failed for {field_name}: {e}")
+            return value
+
     def _parsedata(self, packet, content, raw):
         """Verbesserte Protobuf-Parsing-Methode mit detailliertem Debugging"""
         content_type = type(content).__name__
@@ -864,8 +932,40 @@ class StreamAC(BaseDevice):
                         continue
 
                     value = getattr(content, descriptor.name)
-                    raw["params"][descriptor.name] = value
-                    fields_added += 1
+                    _LOGGER.debug(f"Found field: {descriptor.name} = {value} (type: {type(value)})")
+                    
+                    # Spezialbehandlung für CloudMetter-Objekte
+                    if descriptor.name == "cloudMetter" and hasattr(value, 'DESCRIPTOR'):
+                        _LOGGER.info("🔍 FOUND CloudMetter object in protobuf! Starting field extraction...")
+                        
+                        # Extrahiere alle CloudMetter-Felder individual 
+                        cloudmetter_fields_added = 0
+                        for cloud_descriptor in value.DESCRIPTOR.fields:
+                            _LOGGER.debug(f"Checking CloudMetter field: {cloud_descriptor.name}, HasField: {value.HasField(cloud_descriptor.name)}")
+                            
+                            if value.HasField(cloud_descriptor.name):
+                                cloud_value = getattr(value, cloud_descriptor.name)
+                                
+                                # CloudMetter-Parameter mit eindeutigem Präfix
+                                param_name = f"cloudMeter_{cloud_descriptor.name}"
+                                
+                                # Spezielle Datentyp-Konvertierung für CloudMetter-Felder
+                                converted_value = self._convert_cloudmetter_value(cloud_descriptor.name, cloud_value)
+                                
+                                raw["params"][param_name] = converted_value
+                                cloudmetter_fields_added += 1
+                                _LOGGER.info(f"Extracted CloudMetter field: {param_name} = {converted_value} (type: {type(converted_value)})")
+                        
+                        _LOGGER.info(f"🎯 CloudMetter extraction complete: {cloudmetter_fields_added} fields extracted!")
+                        fields_added += cloudmetter_fields_added
+                        
+                        # Füge NICHT das ganze CloudMetter-Objekt hinzu (nur die individuellen Felder)
+                        # raw["params"][descriptor.name] = value  # ENTFERNT
+                        # fields_added += 1  # ENTFERNT
+                    else:
+                        # Normale Behandlung für alle anderen Felder
+                        raw["params"][descriptor.name] = value
+                        fields_added += 1
                 
                 if fields_added > 0:
                     _LOGGER.debug("cmd_id %u: %s added %d fields", 

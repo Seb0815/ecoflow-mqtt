@@ -25,7 +25,7 @@ This project started as a full Home Assistant integration for EcoFlow devices bu
 
 ## 📋 Prerequisites
 
-- Python 3.11+ (for local installation)
+- Python 3.13+ (for local installation)
 - Docker & Docker Compose (for container deployment)
 - EcoFlow Account with API access
 - MQTT Broker (can be provided with Docker Compose)
@@ -91,6 +91,7 @@ This project started as a full Home Assistant integration for EcoFlow devices bu
 | `MQTT_USERNAME` | MQTT username (optional) | - | `mqttuser` |
 | `MQTT_PASSWORD` | MQTT password (optional) | - | `mqttpass` |
 | `MQTT_BASE_TOPIC` | MQTT base topic | `ecoflow` | `ecoflow` |
+| `LOG_LEVEL` | Logging level | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
 ### Device Configuration
 
@@ -98,13 +99,13 @@ The `ECOFLOW_DEVICES` variable supports multiple formats for maximum flexibility
 
 **Simple format (recommended):**
 ```bash
-ECOFLOW_DEVICES="BK11ZEBB2H3Q0583"                    # Single device
-ECOFLOW_DEVICES="BK11ZEBB2H3Q0583,HW52ZDH4SF270677"   # Multiple devices
+ECOFLOW_DEVICES="BK11ZEBB2H3Q0123"                    # Single device
+ECOFLOW_DEVICES="BK11ZEBB2H3Q0123,HW52ZDH4SF270677"   # Multiple devices
 ```
 
 **Extended format:**
 ```bash
-ECOFLOW_DEVICES="BK11ZEBB2H3Q0583:DELTA_2:MyDelta,HW52ZDH4SF270677:RIVER_2:MyRiver"
+ECOFLOW_DEVICES="BK11ZEBB2H3Q0123:DELTA_2:MyDelta,HW52ZDH4SF270677:RIVER_2:MyRiver"
 ```
 
 **Supported Device Types:**
@@ -118,62 +119,88 @@ ECOFLOW_DEVICES="BK11ZEBB2H3Q0583:DELTA_2:MyDelta,HW52ZDH4SF270677:RIVER_2:MyRiv
 
 ## 📊 MQTT Topics
 
-Data is published in the following topic structure:
+Data is published in a **streamlined topic structure** optimized for efficiency:
 
+### Standard Topics (Always Available)
 ```
 ecoflow/
 ├── {device_sn}/
-│   ├── {parameter_name}           # Individual parameters (NEW!)
-│   ├── data                       # Complete message data
-│   ├── info                       # Device information
-│   ├── status                     # Device status
-│   └── errors/                    # Error parameters
+│   ├── {parameter_name}           # Individual parameters (Recommended!)
+│   ├── battery_soc                # Battery state of charge (%)
+│   ├── f32ShowSoc                 # Display SOC value
+│   ├── gridConnectionPower        # Grid connection power (W)
+│   ├── sysGridConnectionPower     # System grid power (W)
+│   ├── cmd_id                     # Command ID
+│   ├── cmd_func                   # Command function
+│   └── errors/                    # Error parameters (if any)
 │       ├── error                  # Error messages
 │       ├── raw_hex                # Raw hex data on parse errors
 │       └── raw_length             # Raw data length
-├── {device_type}/
-│   └── {device_sn}/
-│       └── data                   # Device-type specific data
-├── raw/
-│   └── device/property/{device_sn} # Raw EcoFlow topic structure
-└── fallback/
-    └── status                     # Fallback mode status
+└── timeout_status                 # Connection monitoring
 ```
 
-**NEW: Individual Parameter Topics**
-Each extracted parameter now gets its own MQTT topic for easy processing:
+### Debug Topics (Only with LOG_LEVEL=DEBUG)
+```
+ecoflow/
+└── {device_sn}/
+    └── data                       # Complete message data (DEBUG only)
+```
+
+### Removed Topics (No Longer Published)
+❌ `ecoflow/{device_type}/{device_sn}/data` - Device-type specific data  
+❌ `ecoflow/raw/device/property/{device_sn}` - Raw EcoFlow topic structure
+
+**Individual Parameter Topics** (Recommended for automation)
+Each extracted parameter gets its own MQTT topic for easy processing:
 
 ```
-ecoflow/BK11ZEBB2H3Q0583/gridConnectionPower
-ecoflow/BK11ZEBB2H3Q0583/sysGridConnectionPower  
-ecoflow/BK11ZEBB2H3Q0583/f32ShowSoc
-ecoflow/BK11ZEBB2H3Q0583/cmd_id
-ecoflow/BK11ZEBB2H3Q0583/cmd_func
-ecoflow/BK11ZEBB2H3Q0583/timestamp
+ecoflow/BK11ZEBB2H3Q0123/gridConnectionPower
+ecoflow/BK11ZEBB2H3Q0123/sysGridConnectionPower  
+ecoflow/BK11ZEBB2H3Q0123/f32ShowSoc
+ecoflow/BK11ZEBB2H3Q0123/cmd_id
+ecoflow/BK11ZEBB2H3Q0123/cmd_func
+ecoflow/BK11ZEBB2H3Q0123/timestamp
 ```
 
 
 **Example Topics:**
 ```
-ecoflow/BK11ZEBB2H3Q0583/gridConnectionPower     # Grid connection power (W)
-ecoflow/BK11ZEBB2H3Q0583/sysGridConnectionPower  # System grid power (W)
-ecoflow/BK11ZEBB2H3Q0583/battery_soc             # Battery state of charge (%)
-ecoflow/BK11ZEBB2H3Q0583/cmd_id                  # Command ID
-ecoflow/BK11ZEBB2H3Q0583/data                    # Complete message data
-ecoflow/BK11ZEBB2H3Q0583/info                    # Device information  
-ecoflow/BK11ZEBB2H3Q0583/status                  # Device status
-ecoflow/BK11ZEBB2H3Q0583/errors/error            # Parse errors
-ecoflow/fallback/status                          # When in fallback mode
+ecoflow/BK11ZEBB2H3Q0123/gridConnectionPower     # Grid connection power (W)
+ecoflow/BK11ZEBB2H3Q0123/sysGridConnectionPower  # System grid power (W)
+ecoflow/BK11ZEBB2H3Q0123/battery_soc             # Battery state of charge (%)
+ecoflow/BK11ZEBB2H3Q0123/cmd_id                  # Command ID
+ecoflow/BK11ZEBB2H3Q0123/cmd_func                # Command function
+ecoflow/BK11ZEBB2H3Q0123/data                    # Complete data (DEBUG only)
+ecoflow/BK11ZEBB2H3Q0123/errors/error            # Parse errors (if any)
+ecoflow/timeout_status                           # Connection monitoring
 ```
 
-**Status Payload Example:**
+### Log Level Configuration
+
+The MQTT topic behavior depends on the `LOG_LEVEL` setting:
+
+- **`LOG_LEVEL=INFO`** (Default): Only individual parameter topics are published
+- **`LOG_LEVEL=DEBUG`**: Additional `/data` topics with complete message data
+
+**Parameter Payload Examples:**
+```bash
+# Simple value (recommended)
+ecoflow/BK11ZEBB2H3Q0123/gridConnectionPower → "125.4"
+ecoflow/BK11ZEBB2H3Q0123/battery_soc → "85.2"
+ecoflow/BK11ZEBB2H3Q0123/f32ShowSoc → "85.2"
+
+# Complex value (as JSON)
+ecoflow/BK11ZEBB2H3Q0123/cmd_id → "138"
+```
+
+**Connection Monitoring:**
 ```json
 {
-  "device_name": "EcoFlow BK11ZEBB2H3Q0583",
-  "device_type": "unknown",
-  "sn": "BK11ZEBB2H3Q0583",
-  "online": true,
-  "last_update": 1721898675
+  "timeout_triggered": true,
+  "reconnection_count": 1,
+  "last_message_time": 1721898675.123,
+  "timeout_interval": 900,
+  "timestamp": 1721898675.456
 }
 ```
 
@@ -219,22 +246,27 @@ The system will show these messages during startup:
 
 ### Debug Mode
 
-Enable detailed logging for troubleshooting:
+Enable detailed logging and additional MQTT topics for troubleshooting:
 
 ```bash
-# Docker with debug logging
+# Docker with debug logging (shows /data topics)
 docker run --rm \
-  -e PYTHONPATH=. \
+  -e LOG_LEVEL=DEBUG \
   -e ECOFLOW_USERNAME='your-email@example.com' \
   -e ECOFLOW_PASSWORD="your-password" \
   -e ECOFLOW_DEVICES="YOUR_DEVICE_SN" \
   -e MQTT_HOST="192.168.1.100" \
-  ecoflow-mqtt python -c "
-import logging
-logging.basicConfig(level=logging.DEBUG)
-exec(open('ecoflow_cloud_mqtt.py').read())
-"
+  ecoflow-mqtt
 ```
+
+**Debug Mode Benefits:**
+- Additional `/data` topics with complete message data
+- More detailed logging output
+- Raw protobuf decoding information
+- Connection recovery details
+
+**Production Recommendation:**
+Use `LOG_LEVEL=INFO` for production to minimize MQTT traffic while maintaining all essential parameter data.
 
 ### Viewing Logs
 
