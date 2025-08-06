@@ -168,36 +168,65 @@ class EcoflowMQTTClient:
 
     def __target_topics(self) -> list[str]:
         topics = []
+        
+        # 🔥 WICHTIG: Account-basierte Topics wie die offizielle App!
+        certificate_topics = []
+        # Korrigierter Name: EcoflowMQTTClient (nicht EcoflowMqttClient)
+        if hasattr(self, '_EcoflowMQTTClient__mqtt_info') and self.__mqtt_info:
+            certificate_account = self.__mqtt_info.username
+            # Das sind die Topics, die die offizielle App verwendet:
+            certificate_topics = [
+                f"/app/{certificate_account}/+",  # 🎯 DAS ist der Hauptkanal!
+                f"/app/device/property/+",        # Device properties 
+                f"/app/device/quota/+",           # Device quota updates
+            ]
+            topics.extend(certificate_topics)
+            _LOGGER.info(f"Adding certificate-based topics for account: {certificate_account}")
+            _LOGGER.info(f"Certificate topics added: {certificate_topics}")
+        else:
+            _LOGGER.warning(f"No MQTT info available for certificate-based topics. hasattr result: {hasattr(self, '_EcoflowMQTTClient__mqtt_info')}, mqtt_info: {getattr(self, '__mqtt_info', 'NOT_FOUND')}")
+        
+        # Device-specific topics als ZUSÄTZLICHE Backup-Topics
+        device_topics_added = False
         for device in self.__devices.values():
             try:
                 if hasattr(device, 'device_info') and hasattr(device.device_info, 'topics'):
                     for topic in device.device_info.topics():
                         topics.append(topic)
+                        device_topics_added = True
                 elif hasattr(device, 'device_data'):
-                    # Fallback: Generiere Standard-Topics für Device
                     device_sn = device.device_data.sn
-                    standard_topics = [
+                    additional_topics = [
                         f"/app/device/property/{device_sn}",
-                        f"/app/{device_sn}/+",
-                        f"/app/+/{device_sn}/+"
+                        f"/app/device/quota/{device_sn}",
                     ]
-                    topics.extend(standard_topics)
+                    topics.extend(additional_topics)
+                    device_topics_added = True
+                    _LOGGER.debug(f"Added device-specific topics: {additional_topics}")
             except Exception as e:
                 _LOGGER.debug(f"Fehler beim Ermitteln der Topics für Device: {e}")
         
-        # Fallback: Wenn immer noch keine Topics, verwende allgemeine Patterns für alle Seriennummern
-        if not topics:
+        # Fallback NUR wenn keine Device-Topics gefunden wurden
+        if not device_topics_added and self.__device_sns:
             for device_sn in self.__device_sns:
-                topics.extend([
+                fallback_topics = [
                     f"/app/device/property/{device_sn}",
-                    f"/app/{device_sn}/+",
-                    f"/app/+/{device_sn}/+",
                     f"/app/device/quota/{device_sn}",
-                    f"/{device_sn}/+",
-                    f"+/{device_sn}/+/+",
-                    f"/topic/device/{device_sn}/+/+",
-                    f"/topic/{device_sn}/+/+"
-                ])
+                ]
+                topics.extend(fallback_topics)
+                _LOGGER.debug(f"Added fallback topics: {fallback_topics}")
         
         # Remove duplicates that can occur when multiple devices have the same topic
-        return list(set(topics)) if topics else []
+        unique_topics = list(set(topics)) if topics else []
+        
+        # 🔥 VERIFY: Stelle sicher, dass certificate-based Topics dabei sind!
+        if certificate_topics:
+            for cert_topic in certificate_topics:
+                if cert_topic not in unique_topics:
+                    _LOGGER.error(f"CRITICAL: Certificate topic missing from final list: {cert_topic}")
+                    unique_topics.append(cert_topic)  # Force add
+                else:
+                    _LOGGER.info(f"✅ Certificate topic confirmed in final list: {cert_topic}")
+        
+        _LOGGER.info(f"Final subscription topics: {unique_topics}")
+        return unique_topics
